@@ -1,0 +1,220 @@
+#include "stm32f0xx.h"
+#include <stdlib.h>
+#include <stdbool.h>
+
+// Define LED pins (adjust according to your board)
+#define LED_GREEN_PIN    GPIO_PIN_8
+#define LED_ORANGE_PIN   GPIO_PIN_9
+#define LED_RED_PIN      GPIO_PIN_10
+#define LED_BLUE_PIN     GPIO_PIN_11
+#define LED_PORT         GPIOC
+
+// Define Button pins (adjust according to your board)
+#define BUTTON_GREEN_PIN GPIO_PIN_0
+#define BUTTON_ORANGE_PIN GPIO_PIN_1
+#define BUTTON_RED_PIN   GPIO_PIN_2
+#define BUTTON_BLUE_PIN  GPIO_PIN_3
+#define BUTTON_PORT      GPIOA
+
+// Game constants
+#define MAX_LEVEL 10
+#define LED_ON_TIME 500  // milliseconds
+#define BETWEEN_TIME 200 // milliseconds
+#define DEBOUNCE_DELAY 50 // milliseconds
+
+// Game variables
+uint8_t sequence[MAX_LEVEL];
+uint8_t current_level = 0;
+bool game_over = false;
+bool input_mode = false;
+uint8_t current_input = 0;
+
+void GPIO_Configure(void);
+void SysTick_Configure(void);
+void generate_sequence(void);
+void play_sequence(void);
+void light_led(uint8_t led);
+bool check_button(uint8_t button);
+uint8_t get_button_press(void);
+void delay_ms(uint32_t ms);
+
+int main(void) {
+    // Initialize hardware
+    GPIO_Configure();
+    SysTick_Configure();
+    
+    // Seed random number generator
+    srand(SysTick->VAL);
+    
+    // Generate initial sequence
+    generate_sequence();
+    
+    while(1) {
+        if(!game_over) {
+            // Show the sequence to the player
+            play_sequence();
+            
+            // Get player input
+            input_mode = true;
+            current_input = 0;
+            
+            while(current_input < current_level && !game_over) {
+                uint8_t button = get_button_press();
+                if(button != 0) {
+                    light_led(button);
+                    
+                    if(button != sequence[current_input]) {
+                        game_over = true;
+                        // Flash all LEDs to indicate game over
+                        for(int i = 0; i < 5; i++) {
+                            GPIO_SetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                            delay_ms(200);
+                            GPIO_ResetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                            delay_ms(200);
+                        }
+                    } else {
+                        current_input++;
+                    }
+                }
+            }
+            
+            input_mode = false;
+            
+            if(!game_over) {
+                // Level complete - flash all LEDs quickly
+                for(int i = 0; i < 3; i++) {
+                    GPIO_SetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                    delay_ms(100);
+                    GPIO_ResetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                    delay_ms(100);
+                }
+                
+                current_level++;
+                if(current_level >= MAX_LEVEL) {
+                    // Game won - flash all LEDs in celebration
+                    for(int i = 0; i < 10; i++) {
+                        GPIO_SetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                        delay_ms(100);
+                        GPIO_ResetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                        delay_ms(100);
+                    }
+                    game_over = true;
+                } else {
+                    // Add new step to sequence
+                    sequence[current_level] = (rand() % 4) + 1;
+                }
+            }
+        } else {
+            // Wait for button press to restart game
+            if(get_button_press() != 0) {
+                game_over = false;
+                current_level = 0;
+                generate_sequence();
+            }
+        }
+    }
+}
+
+void GPIO_Configure(void) {
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    
+    // Enable GPIO clocks
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    
+    // Configure LED pins as outputs
+    GPIO_InitStruct.Pin = LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(LED_PORT, &GPIO_InitStruct);
+    
+    // Configure button pins as inputs with pull-up
+    GPIO_InitStruct.Pin = BUTTON_GREEN_PIN | BUTTON_ORANGE_PIN | BUTTON_RED_PIN | BUTTON_BLUE_PIN;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(BUTTON_PORT, &GPIO_InitStruct);
+}
+
+void SysTick_Configure(void) {
+    // Configure SysTick for 1ms interrupts
+    HAL_SYSTICK_Config(SystemCoreClock / 1000);
+}
+
+void generate_sequence(void) {
+    for(int i = 0; i < MAX_LEVEL; i++) {
+        sequence[i] = (rand() % 4) + 1; // 1=green, 2=orange, 3=red, 4=blue
+    }
+}
+
+void play_sequence(void) {
+    for(int i = 0; i < current_level; i++) {
+        light_led(sequence[i]);
+        delay_ms(BETWEEN_TIME);
+    }
+}
+
+void light_led(uint8_t led) {
+    switch(led) {
+        case 1: // Green
+            HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN, GPIO_PIN_SET);
+            delay_ms(LED_ON_TIME);
+            HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN, GPIO_PIN_RESET);
+            break;
+        case 2: // Orange
+            HAL_GPIO_WritePin(LED_PORT, LED_ORANGE_PIN, GPIO_PIN_SET);
+            delay_ms(LED_ON_TIME);
+            HAL_GPIO_WritePin(LED_PORT, LED_ORANGE_PIN, GPIO_PIN_RESET);
+            break;
+        case 3: // Red
+            HAL_GPIO_WritePin(LED_PORT, LED_RED_PIN, GPIO_PIN_SET);
+            delay_ms(LED_ON_TIME);
+            HAL_GPIO_WritePin(LED_PORT, LED_RED_PIN, GPIO_PIN_RESET);
+            break;
+        case 4: // Blue
+            HAL_GPIO_WritePin(LED_PORT, LED_BLUE_PIN, GPIO_PIN_SET);
+            delay_ms(LED_ON_TIME);
+            HAL_GPIO_WritePin(LED_PORT, LED_BLUE_PIN, GPIO_PIN_RESET);
+            break;
+    }
+}
+
+bool check_button(uint8_t button) {
+    GPIO_PinState state;
+    switch(button) {
+        case 1: // Green
+            state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_GREEN_PIN);
+            return (state == GPIO_PIN_RESET);
+        case 2: // Orange
+            state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_ORANGE_PIN);
+            return (state == GPIO_PIN_RESET);
+        case 3: // Red
+            state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_RED_PIN);
+            return (state == GPIO_PIN_RESET);
+        case 4: // Blue
+            state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_BLUE_PIN);
+            return (state == GPIO_PIN_RESET);
+        default:
+            return false;
+    }
+}
+
+uint8_t get_button_press(void) {
+    while(1) {
+        for(uint8_t i = 1; i <= 4; i++) {
+            if(check_button(i)) {
+                delay_ms(DEBOUNCE_DELAY); // Debounce delay
+                if(check_button(i)) { // Still pressed after debounce
+                    while(check_button(i)); // Wait for release
+                    return i;
+                }
+            }
+        }
+        delay_ms(10); // Small delay to prevent CPU overload
+    }
+}
+
+void delay_ms(uint32_t ms) {
+    uint32_t start = HAL_GetTick();
+    while((HAL_GetTick() - start) < ms);
+}
