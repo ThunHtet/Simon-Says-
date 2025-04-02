@@ -84,9 +84,9 @@ int main(void)
                         // flash all leds multiple times
                         for (int i = 0; i < 5; i++)
                         {
-                            GPIO_SetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                            HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_SET);
                             delay_ms(200);
-                            GPIO_ResetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                            HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_RESET);
                             delay_ms(200);
                         }
                     }
@@ -105,9 +105,9 @@ int main(void)
                 // flash leds quickly to indicate level success
                 for (int i = 0; i < 3; i++)
                 {
-                    GPIO_SetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                    HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_SET);
                     delay_ms(100);
-                    GPIO_ResetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                    HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_RESET);
                     delay_ms(100);
                 }
 
@@ -120,9 +120,9 @@ int main(void)
                     // flash leds repeatedly to indicate victory
                     for (int i = 0; i < 10; i++)
                     {
-                        GPIO_SetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                        HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_SET);
                         delay_ms(100);
-                        GPIO_ResetBits(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN);
+                        HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_RESET);
                         delay_ms(100);
                     }
 
