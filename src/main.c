@@ -1,6 +1,7 @@
 #include "stm32f0xx.h"
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 // define led pins (adjust according to your board)
 #define LED_GREEN_PIN GPIO_PIN_8
@@ -333,3 +334,253 @@ void delay_ms(uint32_t ms)
     while ((HAL_GetTick() - start) < ms)
         ;
 }
+/*#include "stm32f0xx.h"
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include "fifo.h"
+#include "tty.h"
+
+#define FIFOSIZE 16
+#define MAX_LEVEL 10
+#define LED_ON_TIME 500   // LED on duration in milliseconds
+#define BETWEEN_TIME 200  // Delay between sequence steps
+
+// Game variables
+uint8_t sequence[MAX_LEVEL]; // Stores the full random pattern
+uint8_t current_level = 0;   // Current game level (starts from 0)
+bool game_over = false;      // Flag to check game over state
+bool input_mode = false;     // True when waiting for player input
+uint8_t current_input = 0;   // Current position in input sequence
+
+// Color definitions (mapped to characters)
+const char colors[] = {'R', 'G', 'B', 'Y'}; // Red, Green, Blue, Yellow
+
+// Function declarations
+void internal_clock();
+void init_usart5();
+void enable_tty_interrupt();
+char interrupt_getchar();
+void generate_sequence(void);
+void play_sequence(void);
+void play_tone(int frequency, int duration);
+void delay_ms(uint32_t ms);
+void game_over_sequence(void);
+void level_success_sequence(void);
+void victory_sequence(void);
+
+int __io_putchar(int c) {
+    if (c == '\n') {
+        while(!(USART5->ISR & USART_ISR_TXE)){}
+        USART5->TDR = '\r';
+    }
+    while(!(USART5->ISR & USART_ISR_TXE)){}
+    USART5->TDR = c;
+    return c;
+}
+
+int __io_getchar(void) {
+    return interrupt_getchar();
+}
+
+void USART3_8_IRQHandler(void) {
+    while (DMA2_Channel2->CNDTR != sizeof serfifo - seroffset) {
+        if (!fifo_full(&input_fifo)) {
+            insert_echo_char(serfifo[seroffset]);
+        }
+        seroffset = (seroffset + 1) % sizeof serfifo;
+    }
+}
+
+void init_game() {
+    srand(SysTick->VAL); // Seed random number generator
+    current_level = 0;
+    game_over = false;
+    generate_sequence();
+}
+
+void generate_sequence(void) {
+    // Fill the sequence with random values from 0 to 3 (matching colors array)
+    for (int i = 0; i < MAX_LEVEL; i++) {
+        sequence[i] = rand() % 4;
+    }
+}
+
+void play_sequence(void) {
+    printf("\nSimon says:\n");
+    for (int i = 0; i <= current_level; i++) {
+        printf("%c ", colors[sequence[i]]);
+        play_tone(440 + (sequence[i] * 110), LED_ON_TIME); // Play different tones for each color
+        delay_ms(BETWEEN_TIME);
+    }
+    printf("\nYour turn:\n");
+}
+
+void play_tone(int frequency, int duration) {
+    // This would be implemented with actual hardware
+    printf(" [Tone %dHz %dms] ", frequency, duration);
+}
+
+bool check_user_input() {
+    for (int i = 0; i <= current_level; i++) {
+        char expected = colors[sequence[i]];
+        char received = interrupt_getchar();
+        
+        printf("%c", received); // Echo the input
+        
+        if (received != expected) {
+            printf("\nWrong! Expected %c\n", expected);
+            return false;
+        }
+        
+        // Small delay between inputs
+        delay_ms(200);
+    }
+    return true;
+}
+
+void game_over_sequence(void) {
+    printf("\nGame Over! You reached level %d\n", current_level);
+    for (int i = 0; i < 5; i++) {
+        printf("X ");
+        delay_ms(200);
+        printf("O ");
+        delay_ms(200);
+    }
+    printf("\nPress any key to play again...\n");
+}
+
+void level_success_sequence(void) {
+    printf("\nCorrect! ");
+    for (int i = 0; i < 3; i++) {
+        printf(":) ");
+        delay_ms(100);
+        printf("   ");
+        delay_ms(100);
+    }
+    printf("\n");
+}
+
+void victory_sequence(void) {
+    printf("\nYOU WIN! ");
+    for (int i = 0; i < 10; i++) {
+        printf("\\o/ ");
+        delay_ms(100);
+        printf("    ");
+        delay_ms(100);
+    }
+    printf("\nPress any key to play again...\n");
+}
+
+void delay_ms(uint32_t ms) {
+    uint32_t start = HAL_GetTick();
+    while ((HAL_GetTick() - start) < ms) {}
+}
+
+int main() {
+    internal_clock();
+    init_usart5();
+    enable_tty_interrupt();
+    
+    setbuf(stdin, 0);
+    setbuf(stdout, 0);
+    setbuf(stderr, 0);
+    
+    printf("Welcome to Simon Says!\n");
+    printf("Colors: R(Red), G(Green), B(Blue), Y(Yellow)\n");
+    printf("Press any key to start...\n");
+    
+    // Wait for any key to start
+    interrupt_getchar();
+    init_game();
+    
+    while(1) {
+        if (!game_over) {
+            play_sequence();
+            
+            if (!check_user_input()) {
+                game_over_sequence();
+                game_over = true;
+            } else {
+                level_success_sequence();
+                
+                // Increase game level
+                current_level++;
+                
+                // Check for win condition
+                if (current_level >= MAX_LEVEL) {
+                    victory_sequence();
+                    game_over = true;
+                }
+            }
+        } else {
+            // If game is over, wait for a key press to restart
+            interrupt_getchar();
+            init_game();
+            printf("\nNew game started!\n");
+        }
+    }
+    
+    return 0;
+}
+
+// Include your existing USART5 initialization and configuration functions here
+void init_usart5() {
+    RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+    RCC->AHBENR |= RCC_AHBENR_GPIODEN;
+
+    GPIOC->MODER &= ~(GPIO_MODER_MODER12);
+    GPIOC->MODER |= GPIO_MODER_MODER12_1;
+    GPIOC->AFR[1] |= (2 << (4 * (12 - 8)));
+
+    GPIOD->MODER &= ~(GPIO_MODER_MODER2);
+    GPIOD->MODER |= GPIO_MODER_MODER2_1;
+    GPIOD->AFR[0] |= (2 << (4 * 2));
+
+    RCC->APB1ENR |= RCC_APB1ENR_USART5EN;
+
+    USART5->CR1 &= ~USART_CR1_UE;
+
+    USART5->CR1 &= ~USART_CR1_M1;
+    USART5->CR1 &= ~USART_CR1_M0;
+
+    USART5->CR2 &= ~USART_CR2_STOP;
+
+    USART5->CR1 &= ~USART_CR1_PCE;
+
+    USART5->CR1 &= ~USART_CR1_OVER8;
+
+    USART5->BRR = (48000000 / 115200);
+
+    USART5->CR1 |= USART_CR1_TE;
+    USART5->CR1 |= USART_CR1_RE;
+
+    USART5->CR1 |= USART_CR1_UE;
+
+    while(!(USART5->ISR & USART_ISR_TEACK));
+    while(!(USART5->ISR & USART_ISR_REACK));   
+}
+
+void enable_tty_interrupt(void) {
+    RCC->AHBENR |= RCC_AHBENR_DMA2EN;
+    USART5->CR1 |= USART_CR1_RXNEIE;
+    USART5->CR3 |= USART_CR3_DMAR;
+    DMA2->CSELR |= DMA2_CSELR_CH2_USART5_RX;
+    DMA2_Channel2->CCR &= ~DMA_CCR_EN;
+    DMA2_Channel2->CMAR = (uint32_t)serfifo;
+    DMA2_Channel2->CPAR = (uint32_t)&USART5->RDR;
+    DMA2_Channel2->CNDTR = FIFOSIZE;
+    DMA2_Channel2->CCR = DMA_CCR_MINC | DMA_CCR_CIRC | DMA_CCR_PL | DMA_CCR_EN;
+    NVIC->ISER[0] |= (1 << (USART3_8_IRQn));
+}
+
+char interrupt_getchar() {
+    while (!fifo_newline(&input_fifo)){
+        asm volatile ("wfi");
+    }
+    return fifo_remove(&input_fifo);
+}
+
+void internal_clock() {
+    // Implement your clock initialization here
+}*/
