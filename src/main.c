@@ -81,7 +81,7 @@ void spi1_init_oled();
 void spi1_display1(const char *string);
 void spi1_display2(const char *string) ;
 void init_spi1();
-/*
+
 int main(void)
 {
     // initialize ADC and DAC for sound gen
@@ -220,7 +220,7 @@ int main(void)
         }
     }
 }
-*/
+
 void GPIO_Configure(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
