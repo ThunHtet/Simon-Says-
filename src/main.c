@@ -72,6 +72,16 @@ bool check_button(uint8_t button);
 uint8_t get_button_press(void);
 void delay_ms(uint32_t ms);
 
+//diplay functions
+int score(int current);
+void spi_cmd(unsigned int data);
+void spi_data(unsigned int data);
+void nano_wait(unsigned int n);
+void spi1_init_oled();
+void spi1_display1(const char *string);
+void spi1_display2(const char *string) ;
+void init_spi1();
+/*
 int main(void)
 {
     // initialize ADC and DAC for sound gen
@@ -85,6 +95,12 @@ int main(void)
     GPIO_Configure();
     SysTick_Configure();
     PWM_Configure();
+
+    //initalize oled display
+    init_spi1();
+    spi1_init_oled();
+    char str_oled[32]; //display for number
+    int sc; //score
 
     // seed the random number generator using current systick value
     srand(SysTick->VAL);
@@ -120,6 +136,12 @@ int main(void)
                         game_over = true;
                         error_beep();
 
+                        //oled display
+                        sc = score(current_level);
+                        sprintf(str_oled, "final score %d", sc);
+                        spi1_display1("You Lose!");
+                        spi1_display2(str_oled);
+
                         // flash all leds multiple times
                         for (int i = 0; i < 5; i++)
                         {
@@ -133,6 +155,12 @@ int main(void)
                     {
                         // input is correct, move to next step
                         current_input++;
+
+                         //diplay score
+                         sc = score(current_level);
+                         sprintf(str_oled, "current score %d", sc);
+                         spi1_display1("Next Level");
+                         spi1_display2(str_oled);
                     }
                 }
             }
@@ -164,6 +192,11 @@ int main(void)
                         HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN | LED_ORANGE_PIN | LED_RED_PIN | LED_BLUE_PIN, GPIO_PIN_RESET);
                         delay_ms(100);
                     }
+                    //win display
+                    sc = score(current_level);
+                    sprintf(str_oled, "final score %d", sc);
+                    spi1_display1("You Win!");
+                    spi1_display2(str_oled);
 
                     // set game over flag
                     game_over = true;
@@ -187,7 +220,7 @@ int main(void)
         }
     }
 }
-
+*/
 void GPIO_Configure(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
