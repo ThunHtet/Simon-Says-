@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+
+
 int score(int current){
     return (10*current);
 }
@@ -38,7 +40,7 @@ void spi1_init_oled() {
 
 //first row
 void spi1_display1(const char *string) {
-    spi_cmd(0x02);//cursor home postion
+    spi_cmd(0x02); 
     while(*string != '\0'){ //for each character
         spi_data(*string); //call spi_data
         string ++;
@@ -84,5 +86,6 @@ int main(void){
     char scoreString[16];   // adjust buffer size as needed
     sprintf(scoreString, "%d", sc);
     spi1_display2(scoreString);
+    
     
     }*/
