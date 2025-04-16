@@ -15,7 +15,9 @@
             "executable": "C:/Users/Mackenzie butler/Simon-Says--1/.pio/build/nucleo_f091rc/firmware.elf",
             "projectEnvName": "nucleo_f091rc",
             "toolchainBinDir": "C:/.platformio/packages/toolchain-gccarmnoneeabi/bin",
+            "toolchainBinDir": "C:/.platformio/packages/toolchain-gccarmnoneeabi/bin",
             "internalConsoleOptions": "openOnSessionStart",
+            "svdPath": "C:/.platformio/platforms/ststm32/misc/svd/STM32F091x.svd",
             "svdPath": "C:/.platformio/platforms/ststm32/misc/svd/STM32F091x.svd",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -29,7 +31,9 @@
             "executable": "C:/Users/Mackenzie butler/Simon-Says--1/.pio/build/nucleo_f091rc/firmware.elf",
             "projectEnvName": "nucleo_f091rc",
             "toolchainBinDir": "C:/.platformio/packages/toolchain-gccarmnoneeabi/bin",
+            "toolchainBinDir": "C:/.platformio/packages/toolchain-gccarmnoneeabi/bin",
             "internalConsoleOptions": "openOnSessionStart",
+            "svdPath": "C:/.platformio/platforms/ststm32/misc/svd/STM32F091x.svd"
             "svdPath": "C:/.platformio/platforms/ststm32/misc/svd/STM32F091x.svd"
         },
         {
@@ -39,7 +43,9 @@
             "executable": "C:/Users/Mackenzie butler/Simon-Says--1/.pio/build/nucleo_f091rc/firmware.elf",
             "projectEnvName": "nucleo_f091rc",
             "toolchainBinDir": "C:/.platformio/packages/toolchain-gccarmnoneeabi/bin",
+            "toolchainBinDir": "C:/.platformio/packages/toolchain-gccarmnoneeabi/bin",
             "internalConsoleOptions": "openOnSessionStart",
+            "svdPath": "C:/.platformio/platforms/ststm32/misc/svd/STM32F091x.svd",
             "svdPath": "C:/.platformio/platforms/ststm32/misc/svd/STM32F091x.svd",
             "loadMode": "manual"
         }
