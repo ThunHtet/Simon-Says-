@@ -2,6 +2,7 @@
   "files.associations": {
     "main": "cpp",
     "stdlib.h": "c",
-    "stm32f0xx.h": "c"
+    "stm32f0xx.h": "c",
+    "stdint.h": "c"
   }
 }
