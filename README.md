@@ -1,75 +1,102 @@
-<h1 align="center">Simon Says 🎮 – Embedded Game on STM32</h1>
+# 🎮 Simon Says on STM32 with RGB LEDs + PWM
 
-<p align="center">
-  A memory game built on the STM32F0 using PWM-controlled LEDs and HAL. <br>
-  Built with PlatformIO, using STM32Cube HAL, TIM3 PWM, and GPIO inputs.
-</p>
+This project implements a classic **Simon Says memory game** using an STM32F0 microcontroller. It features four RGB LEDs controlled by **PWM** and four push buttons for user input. A buzzer (via DAC output) gives audio feedback for incorrect guesses. A potentiometer (via ADC) controls output volume.
 
-<hr>
+---
 
-<h2>Project Overview</h2>
+## 🧠 Features
 
-<ul>
-  <li>Four colored LEDs (Green, Orange, Red, Blue) display a randomized light sequence.</li>
-  <li>Four buttons let the player input their guess to match the pattern.</li>
-  <li>Game becomes progressively harder as the sequence grows each round.</li>
-  <li>Feedback is shown via LED flash animations.</li>
-  <li>Built entirely with STM32 HAL drivers and PWM on TIM3.</li>
-</ul>
+- ✅ RGB LED control using **PWM** across multiple timers (`TIM2`, `TIM3`, `TIM14–17`)
+- ✅ Four-button input with **debounced** polling
+- ✅ **Buzzer sound** generation using DAC and a square wave wavetable
+- ✅ Potentiometer-based **volume control** using ADC
+- ✅ Full gameplay logic for pattern generation, user response, and level progression
 
-<h2>🔧 Hardware Requirements</h2>
+---
 
-<ul>
-  <li>STM32 Nucleo-F0 board (e.g., Nucleo-F091RC)</li>
-  <li>4 push buttons (GPIOA pins PA0–PA3)</li>
-  <li>4 LEDs (GPIOC pins PC8–PC11)</li>
-  <li>Optional: DAC and speaker for sound feedback</li>
-  <li>PlatformIO + STM32CubeF0 support</li>
-</ul>
+## 🧰 Hardware
 
-<h2>🛠 Technologies Used</h2>
+- STM32 Nucleo Board (F091RC or compatible)
+- 4x RGB LEDs (common cathode recommended)
+- 4x Push buttons
+- 1x Potentiometer (connected to PA1)
+- 1x Buzzer (connected to DAC output on PA4)
 
-<ul>
-  <li><strong>STM32Cube HAL</strong> - Hardware Abstraction Layer</li>
-  <li><strong>TIM3</strong> - Timer for PWM</li>
-  <li><strong>SysTick</strong> - Timing and delays</li>
-  <li><strong>PlatformIO</strong> - Build and upload environment</li>
-</ul>
+---
 
-<h2>🚦 Game Logic</h2>
+## 📌 Pin Map
 
-<ol>
-  <li>Game initializes and generates a random LED sequence.</li>
-  <li>LEDs are flashed using PWM to show the pattern.</li>
-  <li>Player replicates the sequence using buttons.</li>
-  <li>
-    Correct input:
-    <ul>
-      <li>Moves to the next round.</li>
-      <li>Pattern gets longer.</li>
-    </ul>
-  </li>
-  <li>
-    Incorrect input:
-    <ul>
-      <li>Triggers game over flash sequence.</li>
-    </ul>
-  </li>
-  <li>
-    If player reaches the maximum level:
-    <ul>
-      <li>Flashes victory pattern.</li>
-    </ul>
-  </li>
-</ol>
+### Buttons (Input)
 
-<h2>🧩 Key Functions</h2>
+| Color   | Pin     |
+|---------|---------|
+| Green   | PB0     |
+| Orange  | PB1     |
+| Red     | PB2     |
+| Blue    | PB3     |
 
-<ul>
-  <li><code>GPIO_Configure()</code> - Configures button and LED pins</li>
-  <li><code>PWM_Configure()</code> - Sets up TIM3 for PWM output</li>
-  <li><code>generate_sequence()</code> - Fills pattern with random values</li>
-  <li><code>play_sequence()</code> - Plays current pattern via LEDs</li>
-  <li><code>get_button_press()</code> - Captures debounced input</li>
-  <li><code>light_led()</code> - Controls LED brightness via PWM</li>
-</ul>
+### RGB LED Channels (PWM Output)
+
+| LED     | Channel         | Timer   | GPIO   |
+|---------|------------------|---------|--------|
+| LED1    | R/G/B            | TIM3    | PC6–8  |
+| LED2    | R/G/B            | TIM3/TIM15 | PC9, PA14, PA1 |
+| LED3    | R/G/B            | TIM2/TIM16 | PA2, PA3, PA6 |
+| LED4    | R/G/B            | TIM14/16/17 | PB4, PB5, PB6 |
+
+### Audio + Volume
+
+| Function     | Pin   | Peripheral |
+|--------------|-------|------------|
+| Buzzer Out   | PA4   | DAC        |
+| Volume Input | PA1   | ADC        |
+
+---
+
+## 🔁 Game Flow
+
+1. Game initializes all hardware.
+2. A random LED sequence is shown.
+3. Player repeats the pattern using buttons.
+4. If correct, the level increases.
+5. If wrong, the buzzer sounds and game resets.
+
+---
+
+## 📂 Project Structure
+
+- `main.c` - core game loop, logic, and LED control
+- `PWM_Configure()` - initializes all timers for LED control
+- `set_led_brightness()` - sets per-color brightness via PWM
+- `light_led_color()` - combines brightness values to light specific LED/color
+- `play_sequence()` - plays current level's pattern
+- `get_button_press()` - handles user input with debouncing
+- `error_beep()` - plays tone on failure using DAC + wavetable
+
+---
+
+## 🧪 How to Test
+
+- Confirm LEDs are wired to correct timer channels
+- Connect buttons with pull-up logic (internal or external)
+- Use a potentiometer on PA1 for real-time volume adjustment
+- Watch USART5 debug output on PC12/PD2 (115200 baud)
+- Check that each LED lights one at a time during sequence
+
+---
+
+## 🏁 Success Criteria
+
+- Game reliably runs through 10 rounds
+- Buttons detect correct vs incorrect input
+- LED feedback matches intended colors
+- Buzzer activates on error
+- Game resets cleanly after finish or failure
+
+---
+
+## 📚 Dependencies
+
+This project uses the **STM32Cube HAL** framework. All peripheral initialization is done through HAL functions, and no deprecated SPL calls are used.
+
+PlatformIO build flags (in `platformio.ini`
