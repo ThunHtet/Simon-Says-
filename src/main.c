@@ -38,6 +38,17 @@
 #define DEBOUNCE_DELAY 50 // milliseconds
 
 // -----------------------------------------
+// game logic helper function prototypes
+// -----------------------------------------
+void reset_game(void);
+void handle_user_input(void);
+void game_over_sequence(void);
+void win_sequence(void);
+void wait_for_restart(void);
+void success_feedback(void);
+void light_led_color(uint8_t led);
+
+// -----------------------------------------
 // wavetable constants and variables
 // -----------------------------------------
 #define N 1000
@@ -314,6 +325,121 @@ void set_led_brightness(uint8_t led, char color, uint16_t brightness)
     default:
         break;
     }
+}
+
+void light_led_color(uint8_t led)
+{
+    // Turn off all LEDs first
+    GPIOB->ODR &= ~((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
+
+    // Light up the selected one
+    switch (led)
+    {
+    case 1: // White
+        GPIOB->ODR |= (1U << 8);
+        break;
+    case 2: // Red
+        GPIOB->ODR |= (1U << 9);
+        break;
+    case 3: // Green
+        GPIOB->ODR |= (1U << 10);
+        break;
+    case 4: // Blue
+        GPIOB->ODR |= (1U << 11);
+        break;
+    default:
+        break;
+    }
+}
+
+void wait_for_restart(void)
+{
+    while (get_button_press() == 0)
+    {
+        // Wait here until any button is pressed
+    }
+    delay_ms(300); // Optional: small debounce / delay so the game doesn't restart immediately
+}
+
+void reset_game(void)
+{
+    current_level = 1;
+    game_over = false;
+    generate_sequence();
+}
+
+void handle_user_input(void)
+{
+    uint8_t button = get_button_press();
+
+    if (button != 0)
+    {
+        light_led(button); // Feedback
+
+        if (button != sequence[current_input])
+        {
+            game_over = true;
+            input_mode = false;
+        }
+        else
+        {
+            current_input++;
+            if (current_input >= current_level)
+            {
+                input_mode = false; // Completed this level successfully!
+                success_feedback();
+                current_level++;
+            }
+        }
+    }
+}
+
+void success_feedback(void)
+{
+    for (int i = 0; i < 3; i++)
+    {
+        light_led(1);
+        light_led(2);
+        light_led(3);
+        light_led(4);
+        delay_ms(100);
+        light_led(0); // Turn off
+        delay_ms(100);
+    }
+}
+
+void game_over_sequence(void)
+{
+    error_beep();
+    for (int i = 0; i < 5; i++)
+    {
+        light_led(1);
+        light_led(2);
+        light_led(3);
+        light_led(4);
+        delay_ms(100);
+        light_led(0);
+        delay_ms(100);
+    }
+
+    wait_for_restart();
+}
+
+void win_sequence(void)
+{
+    for (int i = 0; i < 10; i++)
+    {
+        light_led(1);
+        light_led(2);
+        light_led(3);
+        light_led(4);
+        delay_ms(100);
+        light_led(0);
+        delay_ms(100);
+    }
+
+    game_over = true;
+    wait_for_restart();
 }
 
 void generate_sequence(void)
