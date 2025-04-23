@@ -237,7 +237,7 @@ void GPIO_Configure(void)
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
 
-    // LED1 (PC6-8), LED2 Red (PC9)
+    // LED1 (PC6-8), LED2 Red (PC9) → TIM3 CH1-4 (AF1)
     GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -245,23 +245,27 @@ void GPIO_Configure(void)
     GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-    // LED2 Green (PA14), Blue (PB15)
+    // LED2 Green (PA14) → TIM15 CH1 (AF0)
     GPIO_InitStruct.Pin = GPIO_PIN_14;
     GPIO_InitStruct.Alternate = GPIO_AF0_TIM15;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+    // LED2 Blue (PB15) → TIM15 CH2 (AF1)
     GPIO_InitStruct.Pin = GPIO_PIN_15;
+    GPIO_InitStruct.Alternate = GPIO_AF1_TIM15;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    // LED3 (PA5, PA2, PA3)
+    // LED3 Red (PA5) → TIM2 CH1_ETR (AF2)
     GPIO_InitStruct.Pin = GPIO_PIN_5;
     GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+    // LED3 Green (PA2), Blue (PA3) → TIM2 CH3 and CH4 (AF2)
     GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-    // LED4 (PB4, PB5, PB0)
+    // LED4 Red (PB4), Green (PB5), Blue (PB0) → TIM3 CH1–CH3 (alt) (AF1)
     GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_0;
     GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
