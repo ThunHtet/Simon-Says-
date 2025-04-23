@@ -12,31 +12,39 @@
 // -----------------------------------------
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim14;
 TIM_HandleTypeDef htim15;
-TIM_HandleTypeDef htim16;
-TIM_HandleTypeDef htim17;
 
 // -----------------------------------------
-// led pin definitions
+// led pin definitions (remapped for PWM)
 // -----------------------------------------
-#define LED1_RED GPIO_PIN_0
-#define LED1_GREEN GPIO_PIN_1
-#define LED1_BLUE GPIO_PIN_2
 
-#define LED2_RED GPIO_PIN_3
-#define LED2_GREEN GPIO_PIN_4
-#define LED2_BLUE GPIO_PIN_5
+// LED1 (TIM3 CH1–CH3)
+#define LED1_RED GPIO_PIN_6   // PC6 - TIM3_CH1
+#define LED1_GREEN GPIO_PIN_7 // PC7 - TIM3_CH2
+#define LED1_BLUE GPIO_PIN_8  // PC8 - TIM3_CH3
 
-#define LED3_RED GPIO_PIN_6
-#define LED3_GREEN GPIO_PIN_7
-#define LED3_BLUE GPIO_PIN_8
+// LED2 (TIM3 CH4, TIM15 CH1–CH2)
+#define LED2_RED GPIO_PIN_9    // PC9 - TIM3_CH4
+#define LED2_GREEN GPIO_PIN_14 // PA14 - TIM15_CH1
+#define LED2_BLUE GPIO_PIN_15  // PB15 - TIM15_CH2
 
-#define LED4_RED GPIO_PIN_9
-#define LED4_GREEN GPIO_PIN_10
-#define LED4_BLUE GPIO_PIN_11
+// LED3 (TIM2 CH1, CH3, CH4)
+#define LED3_RED GPIO_PIN_5   // PA5 - TIM2_CH1_ETR
+#define LED3_GREEN GPIO_PIN_2 // PA2 - TIM2_CH3
+#define LED3_BLUE GPIO_PIN_3  // PA3 - TIM2_CH4
 
-#define LED_PORT GPIOC
+// LED4 (TIM3 alternate CH1–CH3)
+#define LED4_RED GPIO_PIN_4   // PB4 - TIM3_CH1 (alt)
+#define LED4_GREEN GPIO_PIN_5 // PB5 - TIM3_CH2 (alt)
+#define LED4_BLUE GPIO_PIN_0  // PB0 - TIM3_CH3 (alt)
+
+// Define LED Ports
+#define LED1_PORT GPIOC
+#define LED2_R_PORT GPIOC
+#define LED2_G_PORT GPIOA
+#define LED2_B_PORT GPIOB
+#define LED3_PORT GPIOA
+#define LED4_PORT GPIOB
 
 // -----------------------------------------
 // button pin definitions
@@ -78,41 +86,41 @@ uint8_t current_input = 0;
 // -----------------------------------------
 // init function prototypes
 // -----------------------------------------
-void GPIO_Configure(void);
-void PWM_Configure(void);
-void SysTick_Configure(void);
+void GPIO_Configure(void);    // Set up GPIO for LED outputs and button inputs
+void PWM_Configure(void);     // Configure timers and channels for PWM LED control
+void SysTick_Configure(void); // Configure SysTick for millisecond delay timing
 
-void init_adc(void);
-void init_dac(void);
-void init_usart5(void);
-void init_wavetable(void);
-void init_tim6(void);
-void TIM6_DAC_IRQHandler(void);
+void init_adc(void);            // Initialize ADC for potentiometer (volume control)
+void init_dac(void);            // Initialize DAC for sound output (buzzer)
+void init_usart5(void);         // Initialize USART5 for serial communication (debugging/output)
+void init_wavetable(void);      // Generate wavetable for buzzer sound
+void init_tim6(void);           // Configure TIM6 for DAC waveform timing
+void TIM6_DAC_IRQHandler(void); // Interrupt handler for TIM6 (handles DAC output updates)
 
+// -----------------------------------------
 // pwm timer inits
-void init_tim2(void);  // LED 3 (red & green)
-void init_tim3(void);  // LED 1 + partial LED 2
-void init_tim14(void); // LED 4 red
-void init_tim15(void); // LED 2 (green & blue)
-void init_tim16(void); // LED 3 blue, LED 4 green
-void init_tim17(void); // LED 4 blue
+// -----------------------------------------
+void init_tim2(void);  // Configure TIM2 for LED3 (Red → PA5, Green → PA2, Blue → PA3)
+void init_tim3(void);  // Configure TIM3 for LED1 (Red → PC6, Green → PC7, Blue → PC8)
+                       // and LED2 Red channel (PC9, TIM3_CH4)
+void init_tim15(void); // Configure TIM15 for LED2 Green (PA14) and Blue (PB15)
 
 // -----------------------------------------
 // system & game logic function prototypes
 // -----------------------------------------
-void internal_clock(void);
-void error_beep(void);               // play error tone
-uint16_t read_adc(void);             // read pot
-void set_volume(uint16_t adc_value); // map adc to PWM
+void internal_clock(void);           // Configure internal system clock to 48 MHz
+void error_beep(void);               // Play error tone via DAC (wrong input buzzer)
+uint16_t read_adc(void);             // Read ADC value from potentiometer (for volume)
+void set_volume(uint16_t adc_value); // Scale ADC reading to volume value for buzzer
 
-void generate_sequence(void);
-void play_sequence(void);
-void light_led(uint8_t led);
-void light_led_color(uint8_t led, char color);
-void set_led_brightness(uint8_t led, char color, uint16_t brightness);
-bool check_button(uint8_t button);
-uint8_t get_button_press(void);
-void delay_ms(uint32_t ms);
+void generate_sequence(void);                                          // Generate random sequence of LED/button pattern
+void play_sequence(void);                                              // Play current sequence via LED light pattern
+void light_led(uint8_t led);                                           // Light up the selected LED (1–4) with default color
+void light_led_color(uint8_t led, char color);                         // Light specific LED with specified color ('R', 'G', 'B', 'Y')
+void set_led_brightness(uint8_t led, char color, uint16_t brightness); // Set individual LED brightness via PWM
+bool check_button(uint8_t button);                                     // Check if the specified button (1–4) is pressed
+uint8_t get_button_press(void);                                        // Wait for valid button press and return which one was pressed
+void delay_ms(uint32_t ms);                                            // Millisecond delay using SysTick
 
 int main(void)
 {
@@ -225,23 +233,38 @@ void GPIO_Configure(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
 
-    GPIO_InitStruct.Pin = LED1_RED | LED1_GREEN | LED1_BLUE |
-                          LED2_RED | LED2_GREEN | LED2_BLUE |
-                          LED3_RED | LED3_GREEN | LED3_BLUE |
-                          LED4_RED | LED4_GREEN | LED4_BLUE;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    // LED1 (PC6-8), LED2 Red (PC9)
+    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(LED_PORT, &GPIO_InitStruct);
+    GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-    // configure PB0-PB3 (buttons) as input with pull-up
-    GPIO_InitStruct.Pin = BUTTON_GREEN_PIN | BUTTON_ORANGE_PIN | BUTTON_RED_PIN | BUTTON_BLUE_PIN;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(BUTTON_PORT, &GPIO_InitStruct);
+    // LED2 Green (PA14), Blue (PB15)
+    GPIO_InitStruct.Pin = GPIO_PIN_14;
+    GPIO_InitStruct.Alternate = GPIO_AF0_TIM15;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_15;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    // LED3 (PA5, PA2, PA3)
+    GPIO_InitStruct.Pin = GPIO_PIN_5;
+    GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    // LED4 (PB4, PB5, PB0)
+    GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_0;
+    GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
 void SysTick_Configure(void)
@@ -252,16 +275,7 @@ void SysTick_Configure(void)
 
 void init_tim3(void)
 {
-    __HAL_RCC_GPIOC_CLK_ENABLE();
     __HAL_RCC_TIM3_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
     htim3.Instance = TIM3;
     htim3.Init.Prescaler = 48 - 1;
@@ -330,16 +344,7 @@ void init_tim6(void)
 
 void init_tim15(void)
 {
-    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_TIM15_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_1;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF0_TIM15;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     htim15.Instance = TIM15;
     htim15.Init.Prescaler = 48 - 1;
@@ -356,22 +361,14 @@ void init_tim15(void)
 
     HAL_TIM_PWM_ConfigChannel(&htim15, &sConfigOC, TIM_CHANNEL_1);
     HAL_TIM_PWM_ConfigChannel(&htim15, &sConfigOC, TIM_CHANNEL_2);
+
     HAL_TIM_PWM_Start(&htim15, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim15, TIM_CHANNEL_2);
 }
 
 void init_tim2(void)
 {
-    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_TIM2_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     htim2.Instance = TIM2;
     htim2.Init.Prescaler = 48 - 1;
@@ -386,178 +383,83 @@ void init_tim2(void)
     sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
     sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 
+    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1);
     HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3);
     HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4);
+
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
-}
-
-void init_tim16(void)
-{
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_TIM16_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = GPIO_PIN_6;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF5_TIM16;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_5;
-    GPIO_InitStruct.Alternate = GPIO_AF2_TIM16;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    htim16.Instance = TIM16;
-    htim16.Init.Prescaler = 48 - 1;
-    htim16.Init.Period = 1000 - 1;
-    htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_PWM_Init(&htim16);
-
-    TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = 0;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-
-    HAL_TIM_PWM_ConfigChannel(&htim16, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-}
-
-void init_tim17(void)
-{
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_TIM17_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = GPIO_PIN_6;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF2_TIM17;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    htim17.Instance = TIM17;
-    htim17.Init.Prescaler = 48 - 1;
-    htim17.Init.Period = 1000 - 1;
-    htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_PWM_Init(&htim17);
-
-    TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = 0;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-
-    HAL_TIM_PWM_ConfigChannel(&htim17, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
-}
-
-void init_tim14(void)
-{
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_TIM14_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = GPIO_PIN_4;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF0_TIM14;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    htim14.Instance = TIM14;
-    htim14.Init.Prescaler = 48 - 1;
-    htim14.Init.Period = 1000 - 1;
-    htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_PWM_Init(&htim14);
-
-    TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = 0;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-
-    HAL_TIM_PWM_ConfigChannel(&htim14, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
 }
 
 void PWM_Configure(void)
 {
     // This function delegates PWM initialization to specific timer setups
-    init_tim3();  // LED1 (PC6-PC9)
-    init_tim15(); // LED2 (PA14, PA1)
-    init_tim2();  // LED3 (PA2, PA3)
-    init_tim16(); // LED3 Blue (PA6) and LED4 Green (PB5)
-    init_tim17(); // LED4 Blue (PB6)
-    init_tim14(); // LED4 Red (PB4)
+    init_tim3();
+    init_tim2();
+    init_tim15();
 }
 
 void set_led_brightness(uint8_t led, char color, uint16_t brightness)
 {
     switch (led)
     {
-    case 1: // LED1 — TIM3 CH1–CH3 (PC6-8)
+    case 1: // LED1 — TIM3 CH1–CH3 (PC6-PC8)
         switch (color)
         {
         case 'R':
-            TIM3->CCR1 = brightness;
+            TIM3->CCR1 = brightness; // PC6
             break;
         case 'G':
-            TIM3->CCR2 = brightness;
+            TIM3->CCR2 = brightness; // PC7
             break;
         case 'B':
-            TIM3->CCR3 = brightness;
+            TIM3->CCR3 = brightness; // PC8
             break;
         }
         break;
 
-    case 2: // LED2 — Red: TIM3 CH4 (PC9), Green: TIM15 CH1 (PB14), Blue: TIM15 CH2 (PB15)
+    case 2: // LED2 — Red: TIM3 CH4 (PC9), Green: TIM15 CH1 (PA14), Blue: TIM15 CH2 (PB15)
         switch (color)
         {
         case 'R':
-            TIM3->CCR4 = brightness;
+            TIM3->CCR4 = brightness; // PC9
             break;
         case 'G':
-            TIM15->CCR1 = brightness;
+            TIM15->CCR1 = brightness; // PA14
             break;
         case 'B':
-            TIM15->CCR2 = brightness;
+            TIM15->CCR2 = brightness; // PB15
             break;
         }
         break;
 
-    case 3: // LED3 — Red: TIM2 CH3 (PA2), Green: TIM2 CH4 (PA3), Blue: TIM16 CH1 (PA6)
+    case 3: // LED3 — Red: TIM2 CH1 (PA5), Green: TIM2 CH3 (PA2), Blue: TIM2 CH4 (PA3)
         switch (color)
         {
         case 'R':
-            TIM2->CCR3 = brightness;
+            TIM2->CCR1 = brightness; // PA5
             break;
         case 'G':
-            TIM2->CCR4 = brightness;
+            TIM2->CCR3 = brightness; // PA2
             break;
         case 'B':
-            TIM16->CCR1 = brightness;
+            TIM2->CCR4 = brightness; // PA3
             break;
         }
         break;
 
-    case 4: // LED4 — Red: TIM14 CH1 (PB4), Green: TIM16 CH1 (PB5), Blue: TIM17 CH1 (PB6)
+    case 4: // LED4 — Red: TIM3 CH1 (PB4), Green: TIM3 CH2 (PB5), Blue: TIM3 CH3 (PB0)
         switch (color)
         {
         case 'R':
-            TIM14->CCR1 = brightness;
+            TIM3->CCR1 = brightness; // PB4 (alt CH1)
             break;
         case 'G':
-            TIM16->CCR1 = brightness; // shared with LED3 blue
+            TIM3->CCR2 = brightness; // PB5 (alt CH2)
             break;
         case 'B':
-            TIM17->CCR1 = brightness;
+            TIM3->CCR3 = brightness; // PB0 (alt CH3)
             break;
         }
         break;
@@ -589,89 +491,65 @@ void play_sequence(void)
 
 void light_led_color(uint8_t led, char color)
 {
-    // Clear all PWM outputs (set brightness to 0)
-    TIM3->CCR1 = 0;  // PC6  (LED1_RED or LED2_RED)
-    TIM3->CCR2 = 0;  // PC7  (LED1_GREEN)
-    TIM3->CCR3 = 0;  // PC8  (LED1_BLUE)
-    TIM3->CCR4 = 0;  // PC9  (LED2_RED)
-    TIM15->CCR1 = 0; // PA14 (LED2_GREEN)
-    TIM15->CCR2 = 0; // PA1  (LED2_BLUE)
+    // Turn off all LEDs first (clear brightness)
+    for (uint8_t l = 1; l <= 4; l++)
+    {
+        set_led_brightness(l, 'R', 0);
+        set_led_brightness(l, 'G', 0);
+        set_led_brightness(l, 'B', 0);
+    }
 
-    // Determine RGB brightness values based on the color
-    uint16_t r = 0, g = 0, b = 0;
+    // Set target LED with chosen color at full brightness (1000)
     switch (color)
     {
     case 'R':
-        r = 1000;
+        set_led_brightness(led, 'R', 1000);
         break;
     case 'G':
-        g = 1000;
+        set_led_brightness(led, 'G', 1000);
         break;
     case 'B':
-        b = 1000;
+        set_led_brightness(led, 'B', 1000);
         break;
-    case 'Y':
-        r = 1000;
-        g = 1000;
-        break;
-    default:
-        break;
-    }
-
-    // Set the brightness on the specific LED
-    switch (led)
-    {
-    case 1:
-        TIM3->CCR1 = r; // Red - PC6 (CH1)
-        TIM3->CCR2 = g; // Green - PC7 (CH2)
-        TIM3->CCR3 = b; // Blue - PC8 (CH3)
-        break;
-    case 2:
-        TIM3->CCR4 = r;  // Red - PC9 (CH4)
-        TIM15->CCR1 = g; // Green - PA14 (CH1)
-        TIM15->CCR2 = b; // Blue - PA1 (CH2)
+    case 'Y': // Yellow = Red + Green
+        set_led_brightness(led, 'R', 1000);
+        set_led_brightness(led, 'G', 1000);
         break;
     default:
         break;
     }
 
-    delay_ms(LED_ON_TIME);
-
-    // Turn off again
-    TIM3->CCR1 = 0;
-    TIM3->CCR2 = 0;
-    TIM3->CCR3 = 0;
-    TIM3->CCR4 = 0;
-    TIM15->CCR1 = 0;
-    TIM15->CCR2 = 0;
+    delay_ms(LED_ON_TIME); // Hold the color for LED_ON_TIME
 }
 
 void light_led(uint8_t led)
 {
     if (led == 0)
     {
-        // turn off all LEDs
-        set_led_brightness(1, 'R', 0);
-        set_led_brightness(2, 'G', 0);
-        set_led_brightness(3, 'B', 0);
-        set_led_brightness(4, 'Y', 0);
+        // Turn off all LEDs
+        for (uint8_t l = 1; l <= 4; l++)
+        {
+            set_led_brightness(l, 'R', 0);
+            set_led_brightness(l, 'G', 0);
+            set_led_brightness(l, 'B', 0);
+        }
         return;
     }
 
-    // otherwise, light the specific one
+    // Default colors for each LED (adjust if needed)
     switch (led)
     {
     case 1:
-        light_led_color(1, 'R');
+        light_led_color(led, 'R');
         break;
     case 2:
-        light_led_color(2, 'G');
+        light_led_color(led, 'G');
         break;
     case 3:
-        light_led_color(3, 'B');
+        light_led_color(led, 'B');
         break;
     case 4:
-        light_led_color(4, 'Y');
+        light_led_color(led, 'Y'); // Yellow = Red + Green
         break;
     default:
         break;
