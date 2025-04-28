@@ -135,6 +135,11 @@ int main(void)
     GPIO_Configure();
     init_spi1();
     spi1_init_oled();
+    init_adc();
+    init_dac();
+    init_wavetable();
+    init_tim6();
+    SysTick_Configure();
 
     while (1)
     {
@@ -389,6 +394,7 @@ void init_usart5()
     }
     // return; //end function
 }
+
 int __io_putchar(int c)
 {
     while (!(USART5->ISR & USART_ISR_TXE))
@@ -550,7 +556,33 @@ void success_fade_green(void)
         delay_ms(10);
     }
     set_rgb_color(0, 0, 0); // Turn off
+    for (uint16_t i = 1000; i > 0; i -= 20) {
+        set_rgb_color(0, i, 0);
+        delay_ms(10);
+    }
+    set_rgb_color(0, 0, 0);
 }
+
+// void success_feedback(void)
+// {
+//     // Discrete LED celebration
+//     for (int i = 0; i < 3; i++) {
+//         light_led(1); light_led(2); light_led(3); light_led(4);
+//         delay_ms(100);
+//         light_led(0);
+//         delay_ms(100);
+//     }
+    
+//     // RGB green fade
+//     success_fade_green();
+    
+//     // Show score
+//     int current_score = score(current_level);
+//     char score_buf[20];
+//     sprintf(score_buf, "Score: %d", current_score);
+//     spi1_display2(score_buf);
+// }
+
 void failure_flash_red(void)
 {
     for (int i = 0; i < 5; i++)
@@ -828,7 +860,10 @@ void play_sequence(void)
     delay_ms(1000); // Show level
 
     // 🟢 Ensure ALL LEDs are OFF at the start:
-    light_led(5);
+    // light_led(5);
+    // oled_clear();
+    light_led(0);
+    set_rgb_color(0, 0, 0); // Added RGB off
     oled_clear();
 
     for (int i = 0; i < seq_len; i++)
@@ -844,27 +879,32 @@ void play_sequence(void)
         case 1:
             light_led(1);
             spi1_display2("Blue");
+            set_freq(0, 523.25);
             break;
         case 2:
             light_led(2);
             spi1_display2("Green");
+            set_freq(0, 659.25);
             break;
         case 3:
             light_led(3);
             spi1_display2("Red");
+            set_freq(0, 783.99);
             break;
         case 4:
             light_led(4);
             spi1_display2("White");
+            set_freq(0, 1046.50);
             break;
         }
 
         delay_ms(1000); // LED ON time
         light_led(0);   // Turn OFF after each flash!
+        set_freq(0, 0);
     }
 
     oled_clear();
-    delay_ms(1000); // Pause between sequence steps
+    delay_ms(500); // Pause between sequence steps
     spi1_display1("Your turn!");
     delay_ms(500);
 }
@@ -885,11 +925,20 @@ void handle_user_input(void)
     while (current_input < seq_len && !game_over)
     {
         uint8_t button = get_button_press();
-        light_led(0); // LED OFF
+        // light_led(0); // LED OFF
 
-        light_led(button); // Feedback LED ON
+        // light_led(button); // Feedback LED ON
+        // delay_ms(300);
+        // light_led(0); // LED OFF
+        switch(button) {
+            case 1: set_freq(0, 523.25); break;  
+            case 2: set_freq(0, 659.25); break; 
+            case 3: set_freq(0, 783.99); break;  
+            case 4: set_freq(0, 1046.50); break; 
+        }
         delay_ms(300);
-        light_led(0); // LED OFF
+        light_led(0);
+        set_freq(0, 0);
 
         // Log the user's input to the screen:
         oled_clear();
@@ -922,6 +971,8 @@ void handle_user_input(void)
         {
             game_over = true;
             input_mode = false;
+            failure_flash_red();
+            error_beep();
             return; // Wrong input → exit immediately
         }
         else
@@ -954,6 +1005,7 @@ void success_feedback(void)
     sprintf(score_buf, "Score: %d", current_score);
     spi1_display2(score_buf);
 }
+
 void game_over_sequence(void)
 {
     input_mode = false;
