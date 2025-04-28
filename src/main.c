@@ -1,11 +1,15 @@
 // ============================================
-//               INCLUDES / DEFINES
+//                 INCLUDES
 // ============================================
 #include "stm32f0xx.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+// ============================================
+//                  DEFINES
+// ============================================
 
 // LED pin definitions (PWM remapped)
 #define LED1_RED_PIN 6   // PC6 - TIM3_CH1
@@ -25,6 +29,8 @@
 #define BUTTON_PORT GPIOB
 
 // Game constants
+#define STARTING_SEQUENCE_LENGTH 4
+#define MAX_SEQUENCE_LENGTH 8 // or whatever you'd like the max to be
 #define MAX_LEVEL 10
 #define LED_ON_TIME 500   // milliseconds
 #define BETWEEN_TIME 200  // milliseconds
@@ -34,7 +40,9 @@
 #define N 1000
 #define RATE 20000
 
-// Global game state variables
+// ============================================
+//              GLOBAL VARIABLES
+// ============================================
 uint8_t sequence[MAX_LEVEL];
 uint8_t current_level = 0;
 bool game_over = false;
@@ -47,12 +55,12 @@ volatile uint32_t volume = 2400;
 bool game_started = false;
 
 // ============================================
-//              FUNCTION PROTOTYPES
+//              FUNCTION DECLARATIONS
 // ============================================
+
 // System setup
 void internal_clock(void);
 void GPIO_Configure(void);
-void PWM_Configure(void);
 void SysTick_Configure(void);
 void init_adc(void);
 void init_dac(void);
@@ -68,25 +76,24 @@ void init_tim15(void);
 // DAC IRQ Handler
 void TIM6_DAC_IRQHandler(void);
 
-// Game logic
-void reset_game(void);
-void generate_sequence(void);
-void play_sequence(void);
-void handle_user_input(void);
-void success_feedback(void);
-void game_over_sequence(void);
-void win_sequence(void);
-void wait_for_restart(void);
+// RGB
+void PWM_Configure_RGB(void);
+void success_fade_green(void);
+void failure_flash_red(void);
+void celebration_sequence(void);
+void set_rgb_color(uint16_t red, uint16_t green, uint16_t blue);
 
-// Helpers
+// LEDS
 void light_led(uint8_t led);
-void light_led_color(uint8_t led);
 void set_led_brightness(uint8_t led, char color, uint16_t brightness);
+
+// Buttons
 bool check_button(uint8_t button);
 uint8_t get_button_press(void);
 void delay_ms(uint32_t ms);
+void flush_buttons(void);
 
-// ====== OLED Functions (Mackenzie's Code) ======
+// LCD Functions (Mackenzie's Code)
 void nano_wait(unsigned int n);
 void spi_cmd(unsigned int data);
 void spi_data(unsigned int data);
@@ -106,9 +113,89 @@ int __io_putchar(int c);
 // Diagnostic
 void test_led_button_mapping(void);
 
+// Game logic
+void wait_for_game_start(void);
+void reset_game(void);
+void countdown(void);
+void run_game_rounds(void);
+void generate_sequence(void);
+void play_sequence(void);
+void handle_user_input(void);
+void success_feedback(void);
+void game_over_sequence(void);
+void win_sequence(void);
+void wait_for_restart(void);
+
+// ============================================
+//          MAIN FUNCTION
+// ============================================
+int main(void)
+{
+    internal_clock();
+    GPIO_Configure();
+    init_spi1();
+    spi1_init_oled();
+
+    while (1)
+    {
+        wait_for_game_start(); //  Wait for Button 1 (Blue) to start
+        reset_game();          //  Generate sequence ONCE per game
+        run_game_rounds();     //  Handle rounds/levels until win or loss
+    }
+}
+
 // ============================================
 //          FULL IMPLEMENTATION BELOW
 // ============================================
+
+// Diagnostic Testing
+void test_gpio_pullup(void)
+{
+    RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
+    GPIOB->MODER &= ~(3U << (0 * 2)); // Input mode for PB0
+    GPIOB->PUPDR &= ~(3U << (0 * 2)); // Clear PUPDR
+    GPIOB->PUPDR |= (1U << (0 * 2));  // Enable pull-up
+
+    while (1)
+    {
+        char buf[20];
+        uint32_t val = GPIOB->IDR & 0x1; // Read PB0 only
+        sprintf(buf, "PB0: %lu", val);
+        oled_clear();
+        spi1_display1(buf);
+        delay_ms(300);
+    }
+}
+void test_led_button_mapping(void)
+{
+    // LEDs OFF at startup (HIGH = OFF for active-low)
+    GPIOB->ODR |= ((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
+
+    while (1)
+    {
+        if (!(BUTTON_PORT->IDR & GPIO_PIN_0)) // Button 1
+            GPIOB->ODR &= ~(1U << 11);        // Blue ON
+        else
+            GPIOB->ODR |= (1U << 11); // Blue OFF
+
+        if (!(BUTTON_PORT->IDR & GPIO_PIN_1)) // Button 2
+            GPIOB->ODR &= ~(1U << 10);        // Green ON
+        else
+            GPIOB->ODR |= (1U << 10); // Green OFF
+
+        if (!(BUTTON_PORT->IDR & GPIO_PIN_2)) // Button 3
+            GPIOB->ODR &= ~(1U << 9);         // Red ON
+        else
+            GPIOB->ODR |= (1U << 9); // Red OFF
+
+        if (!(BUTTON_PORT->IDR & GPIO_PIN_3)) // Button 4
+            GPIOB->ODR &= ~(1U << 8);         // White ON
+        else
+            GPIOB->ODR |= (1U << 8); // White OFF
+
+        delay_ms(10);
+    }
+}
 
 // System setup
 void GPIO_Configure(void)
@@ -160,14 +247,41 @@ void SysTick_Configure(void)
     SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_ENABLE_Msk;
 }
 
-// PWM Configuration and Timers
-void PWM_Configure(void)
+// PWM Configuration
+void PWM_Configure_RGB(void)
 {
-    // This function delegates PWM initialization to specific timer setups
-    init_tim3();
-    init_tim2();
-    init_tim15();
+    // Enable GPIOC clock and TIM3 clock
+    RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+
+    // Set PC6, PC7, PC8 to Alternate Function mode (AF0 = TIM3)
+    GPIOC->MODER &= ~((3 << (6 * 2)) | (3 << (7 * 2)) | (3 << (8 * 2)));
+    GPIOC->MODER |= ((2 << (6 * 2)) | (2 << (7 * 2)) | (2 << (8 * 2))); // AF mode
+
+    // AFR settings: AF0 is 0, so technically no need to set AFRs. Safe to clear:
+    GPIOC->AFR[0] &= ~((0xF << (6 * 4)) | (0xF << (7 * 4)));
+    GPIOC->AFR[1] &= ~(0xF << ((8 - 8) * 4)); // PC8 AFR[1] slot 0
+
+    // Timer 3 setup
+    TIM3->PSC = 47;  // 48MHz / (47 + 1) = 1MHz timer clock
+    TIM3->ARR = 999; // 1kHz PWM frequency (adjust as needed)
+
+    // Configure PWM mode 1 (OCxM = 110), preload enable
+    TIM3->CCMR1 = (6 << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE_Msk | // Channel 1 (PC6 Red)
+                  (6 << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE_Msk;  // Channel 2 (PC7 Green)
+    TIM3->CCMR2 = (6 << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE_Msk;  // Channel 3 (PC8 Blue)
+
+    // Enable output on all three channels
+    TIM3->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+
+    // Enable auto-reload preload
+    TIM3->CR1 |= TIM_CR1_ARPE;
+
+    // Enable timer
+    TIM3->CR1 |= TIM_CR1_CEN;
 }
+
+// Timers
 void init_tim2(void)
 {
     RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
@@ -371,7 +485,7 @@ void error_beep(void)
     set_freq(0, 0); // stop sound
 }
 
-// LED Helpers
+// RGB Helpers
 void set_led_brightness(uint8_t led, char color, uint16_t brightness)
 {
     switch (led)
@@ -422,39 +536,79 @@ void set_led_brightness(uint8_t led, char color, uint16_t brightness)
         break;
     }
 }
-void light_led_color(uint8_t led)
+void set_rgb_color(uint16_t red, uint16_t green, uint16_t blue)
 {
-    light_led(led); // Forward call to light_led()
+    TIM3->CCR1 = red;   // PC6 - Red
+    TIM3->CCR2 = green; // PC7 - Green
+    TIM3->CCR3 = blue;  // PC8 - Blue
 }
+void success_fade_green(void)
+{
+    for (uint16_t i = 0; i < 1000; i += 10)
+    {
+        set_rgb_color(0, i, 0); // Green fade
+        delay_ms(10);
+    }
+    set_rgb_color(0, 0, 0); // Turn off
+}
+void failure_flash_red(void)
+{
+    for (int i = 0; i < 5; i++)
+    {
+        set_rgb_color(1000, 0, 0); // Red ON
+        delay_ms(200);
+        set_rgb_color(0, 0, 0); // OFF
+        delay_ms(200);
+    }
+}
+void celebration_sequence(void)
+{
+    for (int i = 0; i < 10; i++)
+    {
+        set_rgb_color(1000, 0, 0); // Red
+        delay_ms(200);
+        set_rgb_color(0, 1000, 0); // Green
+        delay_ms(200);
+        set_rgb_color(0, 0, 1000); // Blue
+        delay_ms(200);
+        set_rgb_color(1000, 1000, 0); // Yellow
+        delay_ms(200);
+        set_rgb_color(0, 1000, 1000); // Cyan
+        delay_ms(200);
+        set_rgb_color(1000, 0, 1000); // Magenta
+        delay_ms(200);
+        set_rgb_color(0, 0, 0); // OFF
+    }
+}
+
+// LED Helper
 void light_led(uint8_t led)
 {
-    // Turn off all LEDs first
-    // GPIOB->ODR &= ~((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
+    // First turn all LEDs OFF (ACTIVE-HIGH: clear bits)
+    GPIOB->ODR &= ~((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
 
-    GPIOB->ODR |= ((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
-
-    // Light the matching LED
     switch (led)
     {
-    case 1:
-        GPIOB->ODR |= (1U << 8); // White LED (PB8)
+    case 1:                       // Blue LED (PB11)
+        GPIOB->ODR |= (1U << 11); // ON
         break;
-    case 2:
-        GPIOB->ODR |= (1U << 9); // Red LED (PB9)
+    case 2:                       // Green LED (PB10)
+        GPIOB->ODR |= (1U << 10); // ON
         break;
-    case 3:
-        GPIOB->ODR |= (1U << 10); // Green LED (PB10)
+    case 3:                      // Red LED (PB9)
+        GPIOB->ODR |= (1U << 9); // ON
         break;
-    case 4:
-        GPIOB->ODR |= (1U << 11); // Blue LED (PB11)
+    case 4:                      // White LED (PB8)
+        GPIOB->ODR |= (1U << 8); // ON
         break;
+    case 0: // All OFF (optional case 0 for OFF)
     default:
-        // If led == 0 or invalid, all LEDs stay off
+        // Do nothing extra — they're already off at the start.
         break;
     }
 }
 
-// Input Helpers
+// Button Helpers
 bool check_button(uint8_t button)
 {
     switch (button)
@@ -471,7 +625,6 @@ bool check_button(uint8_t button)
         return false;
     }
 }
-
 uint8_t get_button_press(void)
 {
     uint8_t detected_button = 0;
@@ -495,6 +648,17 @@ uint8_t get_button_press(void)
     }
     return detected_button;
 }
+void flush_buttons(void)
+{
+    for (uint8_t i = 1; i <= 4; i++)
+    {
+        while (check_button(i))
+        {
+            // Wait until released
+        }
+    }
+    delay_ms(50); // debounce
+}
 
 // Delay Helper
 void delay_ms(uint32_t ms)
@@ -508,7 +672,6 @@ void delay_ms(uint32_t ms)
 }
 
 // LCD Functions
-// Mackenzie's OLED SPI functions:
 int score(int current)
 {
     return (10 * current);
@@ -591,144 +754,187 @@ void oled_clear(void)
 // Game Logic
 void reset_game(void)
 {
-    current_level = 1;
-    game_over = false;
-    input_mode = false;
-    generate_sequence(); // Only once at reset!
+    current_level = 1;   // Reset to level 1
+    current_input = 0;   // Reset input index
+    game_over = false;   // Clear game over flag
+    input_mode = false;  // Not waiting for input yet
+    generate_sequence(); // Sequence generated ONCE at the start!
 }
+void wait_for_game_start(void)
+{
+    oled_clear();
+    spi1_display1("Press Button 1");
+    spi1_display2("(Blue) to start!");
 
+    while (1)
+    {
+        if (check_button(1))
+        {
+            while (check_button(1))
+                ;         // Wait for release
+            delay_ms(50); // Debounce
+            break;        // Exit once Button 1 is pressed
+        }
+    }
+}
+void countdown(void)
+{
+    oled_clear();
+    delay_ms(1000); // Pause before countdown
+    spi1_display1("Starting game...");
+    delay_ms(1000); // Pause before countdown
+
+    for (int i = 5; i >= 1; i--)
+    {
+        char buffer[20];
+        sprintf(buffer, "Starting in: %d", i);
+        spi1_display1(buffer);
+        delay_ms(1000); // Give the LCD time to actually show it!
+    }
+    oled_clear();
+    delay_ms(1000); // Pause before GO
+    spi1_display1("GO!");
+    delay_ms(1000); // Give the player a moment after "GO!"
+}
+int sequence_length_for_level(int level)
+{
+    int length = STARTING_SEQUENCE_LENGTH + (level - 1);
+    if (length > MAX_SEQUENCE_LENGTH)
+        length = MAX_SEQUENCE_LENGTH;
+    return length;
+}
 void generate_sequence(void)
 {
-    // Hardcoded first 4 steps for level 1:
+    // Hardcoded pattern for Level 1:
     sequence[0] = 4; // White
     sequence[1] = 3; // Red
     sequence[2] = 2; // Green
     sequence[3] = 1; // Blue
 
-    // Generate the rest randomly up to MAX_LEVEL
+    // If you want random sequences for higher levels:
     for (int i = 4; i < MAX_LEVEL; i++)
     {
         sequence[i] = (rand() % 4) + 1;
     }
 }
-
 void play_sequence(void)
 {
     char buffer[20];
+    int seq_len = sequence_length_for_level(current_level);
 
-    // Show Level Info
     oled_clear();
     sprintf(buffer, "Level %d:", current_level);
     spi1_display1(buffer);
+    delay_ms(1000); // Show level
 
-    // Build sequence string like "W R G B"
-    char seq_str[20] = "";
-    for (int i = 0; i < current_level; i++)
+    // 🟢 Ensure ALL LEDs are OFF at the start:
+    light_led(5);
+    oled_clear();
+
+    for (int i = 0; i < seq_len; i++)
     {
+        // Ensure LEDs are OFF before showing each one:
+        light_led(0);
+        spi1_display1("Simon Says:");
+        delay_ms(1000); // Pause between sequence steps
+        oled_clear();
+        // Show the next LED and its label:
         switch (sequence[i])
         {
         case 1:
-            strcat(seq_str, "B "); // Blue
+            light_led(1);
+            spi1_display2("Blue");
             break;
         case 2:
-            strcat(seq_str, "G "); // Green
+            light_led(2);
+            spi1_display2("Green");
             break;
         case 3:
-            strcat(seq_str, "R "); // Red
+            light_led(3);
+            spi1_display2("Red");
             break;
         case 4:
-            strcat(seq_str, "W "); // White
+            light_led(4);
+            spi1_display2("White");
             break;
         }
+
+        delay_ms(1000); // LED ON time
+        light_led(0);   // Turn OFF after each flash!
     }
 
-    spi1_display2(seq_str); // Display sequence on LCD
-    delay_ms(1500);         // Pause to read sequence
-
-    // Play LED sequence:
-    for (int i = 0; i < current_level; i++)
-    {
-        light_led(sequence[i]); // LED ON
-        delay_ms(500);          // Half-second ON
-
-        light_led(0);  // LEDs OFF
-        delay_ms(500); // Half-second OFF between steps
-    }
-
-    // Prompt player for their turn:
     oled_clear();
+    delay_ms(1000); // Pause between sequence steps
     spi1_display1("Your turn!");
-    spi1_display2("Repeat the pattern");
-
-    current_input = 0;
-    input_mode = true;
+    delay_ms(500);
 }
-
 void handle_user_input(void)
 {
     char buffer[20];
+    int seq_len = sequence_length_for_level(current_level);
 
-    while (input_mode && !game_over)
+    oled_clear();
+    spi1_display1("Your turn!");
+
+    current_input = 0;
+    flush_buttons();   // Clear any previous button presses
+    input_mode = true; // Set input mode to true
+
+    delay_ms(50); // Optional debounce
+
+    while (current_input < seq_len && !game_over)
     {
         uint8_t button = get_button_press();
-        light_led(button); // Feedback
+        light_led(0); // LED OFF
 
-        // Show on OLED what the player just pressed:
+        light_led(button); // Feedback LED ON
+        delay_ms(300);
+        light_led(0); // LED OFF
+
+        // Log the user's input to the screen:
         oled_clear();
         spi1_display1("You pressed:");
+
         switch (button)
         {
         case 1:
-            spi1_display2("B");
+            sprintf(buffer, "Blue");
             break;
         case 2:
-            spi1_display2("G");
+            sprintf(buffer, "Green");
             break;
         case 3:
-            spi1_display2("R");
+            sprintf(buffer, "Red");
             break;
         case 4:
-            spi1_display2("W");
+            sprintf(buffer, "White");
             break;
         default:
-            spi1_display2("?");
+            sprintf(buffer, "?");
             break;
         }
-        delay_ms(500);
 
+        spi1_display2(buffer); // Actually print the color name
+        delay_ms(800);         // Let the player read the feedback
+
+        // Check correctness:
         if (button != sequence[current_input])
         {
-            // Incorrect input:
             game_over = true;
             input_mode = false;
+            return; // Wrong input → exit immediately
         }
         else
         {
-            current_input++;
-            if (current_input >= current_level)
+            current_input++; // Move to next input
+            if (current_input >= seq_len)
             {
-                input_mode = false; // Successfully completed this level!
+                input_mode = false; // Successfully completed level!
                 success_feedback();
                 current_level++;
-
-                // Show success message:
-                oled_clear();
-                spi1_display1("Good job!");
-                sprintf(buffer, "Next: Level %d", current_level);
-                spi1_display2(buffer);
-                delay_ms(1000);
+                return;
             }
         }
-    }
-
-    if (current_level > MAX_LEVEL)
-    {
-        win_sequence();
-        game_over = true;
-    }
-    else if (game_over)
-    {
-        game_over_sequence();
     }
 }
 void success_feedback(void)
@@ -743,25 +949,26 @@ void success_feedback(void)
         light_led(0);
         delay_ms(100);
     }
+    int current_score = score(current_level);
+    char score_buf[20];
+    sprintf(score_buf, "Score: %d", current_score);
+    spi1_display2(score_buf);
 }
 void game_over_sequence(void)
 {
     input_mode = false;
-
     error_beep();
+
     oled_clear();
     spi1_display1("Game Over!");
+    int current_score = score(current_level);
+    char score_buf[20];
+    sprintf(score_buf, "Score: %d", current_score);
+    spi1_display2(score_buf);
 
-    for (int i = 0; i < 5; i++)
-    {
-        light_led(1);
-        light_led(2);
-        light_led(3);
-        light_led(4);
-        delay_ms(100);
-        light_led(0);
-        delay_ms(100);
-    }
+    failure_flash_red(); // 🟢 Replace GPIO toggling with your RGB helper
+
+    set_rgb_color(0, 0, 0); // Make sure RGB turns OFF after flashing
 
     wait_for_restart();
 }
@@ -773,19 +980,36 @@ void win_sequence(void)
     spi1_display1("Congratulations!");
     spi1_display2("All levels passed!");
 
-    for (int i = 0; i < 10; i++)
-    {
-        light_led(1);
-        light_led(2);
-        light_led(3);
-        light_led(4);
-        delay_ms(100);
-        light_led(0);
-        delay_ms(100);
-    }
+    celebration_sequence(); // 🟢 Replace game LED flashing with your RGB helper
+
+    set_rgb_color(0, 0, 0); // Ensure RGB turns OFF at the end
 
     game_over = true;
     wait_for_restart();
+}
+
+void run_game_rounds(void)
+{
+    game_over = false;
+    current_level = 1;
+
+    while (!game_over)
+    {
+        countdown();
+        play_sequence();
+        handle_user_input(); // This may increment current_level or set game_over
+
+        if (game_over)
+        {
+            game_over_sequence();
+            break;
+        }
+        else if (current_level > MAX_LEVEL)
+        {
+            win_sequence();
+            break;
+        }
+    }
 }
 void wait_for_restart(void)
 {
@@ -794,149 +1018,4 @@ void wait_for_restart(void)
         // Wait here until any button is pressed
     }
     delay_ms(300); // Debounce
-}
-
-// Diagnostic Testing
-void test_gpio_pullup(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
-    GPIOB->MODER &= ~(3U << (0 * 2)); // Input mode for PB0
-    GPIOB->PUPDR &= ~(3U << (0 * 2)); // Clear PUPDR
-    GPIOB->PUPDR |= (1U << (0 * 2));  // Enable pull-up
-
-    while (1)
-    {
-        char buf[20];
-        uint32_t val = GPIOB->IDR & 0x1; // Read PB0 only
-        sprintf(buf, "PB0: %lu", val);
-        oled_clear();
-        spi1_display1(buf);
-        delay_ms(300);
-    }
-}
-void test_led_button_mapping(void)
-{
-    // LEDs OFF at startup (HIGH = OFF for active-low)
-    GPIOB->ODR |= ((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
-
-    while (1)
-    {
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_0)) // Button 1
-            GPIOB->ODR &= ~(1U << 11);        // Blue ON
-        else
-            GPIOB->ODR |= (1U << 11); // Blue OFF
-
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_1)) // Button 2
-            GPIOB->ODR &= ~(1U << 10);        // Green ON
-        else
-            GPIOB->ODR |= (1U << 10); // Green OFF
-
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_2)) // Button 3
-            GPIOB->ODR &= ~(1U << 9);         // Red ON
-        else
-            GPIOB->ODR |= (1U << 9); // Red OFF
-
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_3)) // Button 4
-            GPIOB->ODR &= ~(1U << 8);         // White ON
-        else
-            GPIOB->ODR |= (1U << 8); // White OFF
-
-        delay_ms(10);
-    }
-}
-
-// MAIN Function
-int main(void)
-{
-    internal_clock();
-    GPIO_Configure();
-    init_spi1();
-    spi1_init_oled();
-
-    reset_game(); // 👈 Generate sequence ONCE here, at the start!
-
-    while (1) // 🔥 FULL GAME LOOP
-    {
-        // Only show this "start" message if it's a fresh game:
-        oled_clear();
-        spi1_display1("Press button 1");
-        spi1_display2("(blue) to start!");
-
-        uint8_t button_pressed = 0;
-
-        // Wait until BUTTON 1 is pressed:
-        while (button_pressed == 0)
-        {
-            for (uint8_t i = 1; i <= 4; i++)
-            {
-                if (check_button(i))
-                {
-                    button_pressed = i;
-                    while (check_button(i))
-                        ; // Wait for release
-                    delay_ms(50);
-                    break;
-                }
-            }
-        }
-
-        if (button_pressed == 1)
-        {
-            char buf[20];
-            oled_clear();
-            sprintf(buf, "Button %d Pressed", button_pressed);
-            spi1_display1(buf);
-            delay_ms(500);
-
-            // ✅ Game STARTS, now looping through levels:
-            game_over = false;
-            current_level = 1; // Set level 1 here!
-
-            while (!game_over && current_level <= MAX_LEVEL)
-            {
-                // Show level and countdown:
-                oled_clear();
-                char level_buf[20];
-                sprintf(level_buf, "Level %d", current_level);
-                spi1_display1(level_buf);
-                spi1_display2("Get Ready!");
-                delay_ms(1000);
-
-                for (int i = 3; i >= 1; i--)
-                {
-                    char count_buf[20];
-                    sprintf(count_buf, "Starting in: %d", i);
-                    oled_clear();
-                    spi1_display1(count_buf);
-                    delay_ms(1000);
-                }
-
-                oled_clear();
-                spi1_display1("GO!");
-                delay_ms(500);
-
-                // 🟢 Play sequence and handle input:
-                play_sequence();
-                handle_user_input();
-
-                // Check after input if player won all levels:
-                if (current_level > MAX_LEVEL)
-                {
-                    win_sequence();
-                    game_over = true;
-                }
-                else if (game_over)
-                {
-                    game_over_sequence();
-                }
-            }
-        }
-        else
-        {
-            oled_clear();
-            spi1_display1("Wrong button!");
-            delay_ms(1000);
-        }
-        // No reset_game() here — it should only happen at the top after the full game finishes!
-    }
 }
