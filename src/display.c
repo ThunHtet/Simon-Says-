@@ -4,11 +4,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-
-
-
-
-
 int score(int current){
     return (10*current);
 }
@@ -27,11 +22,11 @@ void spi_data(unsigned int data) {
     spi_cmd(data | 0x200);
    
 }
-// void nano_wait(unsigned int n) {
-//     asm(    "        mov r0,%0\n"
-//             "repeat: sub r0,#83\n"
-//             "        bgt repeat\n" : : "r"(n) : "r0", "cc");
-// }
+void nano_wait(unsigned int n) {
+    asm(    "        mov r0,%0\n"
+            "repeat: sub r0,#83\n"
+            "        bgt repeat\n" : : "r"(n) : "r0", "cc");
+}
 void spi1_init_oled(void) {
     SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk;
     nano_wait(1000000);

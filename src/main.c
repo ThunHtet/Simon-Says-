@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "display.h"
+#include "buzzer.h"
 
 
 // ============================================
@@ -40,12 +42,6 @@
 #define BETWEEN_TIME 200  // milliseconds
 #define DEBOUNCE_DELAY 50 // milliseconds
 
-
-// Wavetable constants
-#define N 1000
-#define RATE 20000
-
-
 // ============================================
 //              GLOBAL VARIABLES
 // ============================================
@@ -54,10 +50,6 @@ uint8_t current_level = 0;
 bool game_over = false;
 bool input_mode = false;
 uint8_t current_input = 0;
-short int wavetable[N];
-int step0 = 0, offset0 = 0;
-int step1 = 0, offset1 = 0;
-volatile uint32_t volume = 2400;
 bool game_started = false;
 
 
@@ -70,22 +62,11 @@ bool game_started = false;
 void internal_clock(void);
 void GPIO_Configure(void);
 void SysTick_Configure(void);
-void init_adc(void);
-void init_dac(void);
-void init_wavetable(void);
-void init_tim6(void);
-void init_usart5(void);
-
 
 // Timer initializations
 void init_tim2(void);
 void init_tim3(void);
 void init_tim15(void);
-
-
-// DAC IRQ Handler
-void TIM6_DAC_IRQHandler(void);
-
 
 // RGB
 void PWM_Configure_RGB(void);
@@ -105,30 +86,7 @@ bool check_button(uint8_t button);
 uint8_t get_button_press(void);
 void delay_ms(uint32_t ms);
 void flush_buttons(void);
-
-
-// LCD Functions (Mackenzie's Code)
-void nano_wait(unsigned int n);
-void spi_cmd(unsigned int data);
-void spi_data(unsigned int data);
-void spi1_init_oled(void);
-void spi1_display1(const char *string);
-void spi1_display2(const char *string);
-void init_spi1(void);
 void oled_clear(void);
-
-
-// Sound helpers
-void error_beep(void);
-void set_freq(int chan, float f);
-void set_volume(uint16_t adc_value);
-uint16_t read_adc(void);
-int __io_putchar(int c);
-
-
-// Diagnostic
-void test_led_button_mapping(void);
-
 
 // Game logic
 void wait_for_game_start(void);
@@ -142,17 +100,13 @@ void success_feedback(void);
 void game_over_sequence(void);
 void win_sequence(void);
 void wait_for_restart(void);
-void test_gpio_buttons_led(void);
 
 
 // ============================================
 //          MAIN FUNCTION
 // ============================================
 
-
-
-
-    int main(void)
+int main(void)
 {
     internal_clock();
     GPIO_Configure();
@@ -168,70 +122,9 @@ void test_gpio_buttons_led(void);
     }
 }
 
-
-
-
 // ============================================
 //          FULL IMPLEMENTATION BELOW
 // ============================================
-
-
-// Diagnostic Testing
-void test_gpio_pullup(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
-    GPIOB->MODER &= ~(3U << (0 * 2)); // Input mode for PB0
-    GPIOB->PUPDR &= ~(3U << (0 * 2)); // Clear PUPDR
-    GPIOB->PUPDR |= (1U << (0 * 2));  // Enable pull-up
-
-
-    while (1)
-    {
-        char buf[20];
-        uint32_t val = GPIOB->IDR & 0x1; // Read PB0 only
-        sprintf(buf, "PB0: %lu", val);
-        oled_clear();
-        spi1_display1(buf);
-        delay_ms(300);
-    }
-}
-void test_led_button_mapping(void)
-{
-    // LEDs OFF at startup (HIGH = OFF for active-low)
-    GPIOB->ODR |= ((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
-
-
-    while (1)
-    {
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_0)) // Button 1
-            GPIOB->ODR &= ~(1U << 11);        // Blue ON
-        else
-            GPIOB->ODR |= (1U << 11); // Blue OFF
-
-
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_1)) // Button 2
-            GPIOB->ODR &= ~(1U << 10);        // Green ON
-        else
-            GPIOB->ODR |= (1U << 10); // Green OFF
-
-
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_2)) // Button 3
-            GPIOB->ODR &= ~(1U << 9);         // Red ON
-        else
-            GPIOB->ODR |= (1U << 9); // Red OFF
-
-
-        if (!(BUTTON_PORT->IDR & GPIO_PIN_3)) // Button 4
-            GPIOB->ODR &= ~(1U << 8);         // White ON
-        else
-            GPIOB->ODR |= (1U << 8); // White OFF
-
-
-        delay_ms(10);
-    }
-}
-
-
 // System setup
 void GPIO_Configure(void)
 {
@@ -363,199 +256,6 @@ void init_tim15(void)
                    (6U << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE_Msk;
     TIM15->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E;
     TIM15->CR1 = TIM_CR1_CEN;
-}
-
-
-// ADC and DAC functions
-void init_adc(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // enable PA1
-    GPIOA->MODER |= (3 << (1 * 2));    // PA1 to analog mode
-    RCC->APB2ENR |= RCC_APB2ENR_ADCEN; // PA1 as adc in
-
-
-    ADC1->CFGR1 &= ~ADC_CFGR1_CONT; // single conversion mode
-    ADC1->CR |= ADC_CR_ADEN;        // enable adc
-    while (!(ADC1->ISR & ADC_ISR_ADRDY))
-        ; // wait until ready, then leave function
-}
-uint16_t read_adc(void)
-{
-    ADC1->CHSELR = ADC_CHSELR_CHSEL1; // select PA1
-    ADC1->CR |= ADC_CR_ADSTART;
-    while (!(ADC1->ISR & ADC_ISR_EOC))
-        ; // wait for conversion
-    return ADC1->DR;
-}
-void set_volume(uint16_t adc_value)
-{
-    volume = 100 + ((adc_value * 3000) / 4095);
-}
-void init_dac(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // enable GPIOA RCC clock
-    GPIOA->MODER |= (0x3 << (2 * 4));  // set PA4 to DAC_OUT1: (0x3<<(2*4))= 11 00 00 00 00
-    RCC->APB1ENR |= RCC_APB1ENR_DACEN; // enable DAC RCC clock
-
-
-    DAC->CR &= ~DAC_CR_TSEL1; // select TRGO trigger fro TSEL field in CR register(bit 000(~0x7) shifted to the left 3 bits)
-
-
-    DAC->CR |= DAC_CR_EN1; // enable DAC
-}
-void init_wavetable(void)
-{
-    for (int i = 0; i < N; i++)
-        wavetable[i] = (i < N / 2) ? 32767 : -32767; // create wave for buzzer sound
-}
-
-
-// USART Debug Setup
-void init_usart5()
-{
-    RCC->AHBENR |= (RCC_AHBENR_GPIOCEN | RCC_AHBENR_GPIODEN); // enable port c and d clocks
-
-
-    GPIOC->MODER &= ~(GPIO_MODER_MODER12); // reset PC12
-    GPIOC->MODER |= (0x2 << (2 * 12));     // set PC12 function to alt func(2)
-
-
-    GPIOC->AFR[1] |= (0x2 << (16)); // set AFR[1], bit shifted 16 bits, which represents AFR12(which means this is the set bit for AltFunc for PC12) to 0x2(representing AF2, which is USART5_TX)
-
-
-    GPIOD->MODER &= ~(GPIO_MODER_MODER2); // reset PD2
-    GPIOD->MODER |= (0x2 << (2 * 2));     // set PD2 function to alt func(2)
-
-
-    GPIOD->AFR[0] |= (0x2 << (8)); // set AFR[0], bit shifted 8 bits, which represents AFR2(which means this is the set bit for AltFunc for PD2) to 0x2(representing AF2, which is USART5_RX)
-
-
-    RCC->APB1ENR |= RCC_APB1ENR_USART5EN;          // enable RCC clock to USART5
-    USART5->CR1 &= ~(USART_CR1_UE);                // disable usart bit
-    USART5->CR1 &= ~(USART_CR1_M0 | USART_CR1_M1); // set size to 8bits(M0 and M1 must be set to 00)
-    USART5->CR2 &= ~(USART_CR2_STOP);              // set stop to be 00(representing 1 stop bit) ///this may be wrong???
-    USART5->CR1 &= ~(USART_CR1_PCE);               // set parity control enable to 0 for off
-    USART5->CR1 &= ~(USART_CR1_OVER8);             // set OVER8 to 0, representing 16x oversampling
-    USART5->BRR = 0x1A1;                           // gotten from family reference for oversampling 16, desired baud rate of 115.2KBps
-
-
-    USART5->CR1 |= USART_CR1_TE; // enable transmitter bit
-    USART5->CR1 |= USART_CR1_RE; // enable reciever bit
-
-
-    USART5->CR1 |= USART_CR1_UE; // enable usart bit
-    while (!((USART5->ISR & USART_ISR_TEACK) && (USART5->ISR & USART_ISR_REACK)))
-    {
-        // wait until TE adn RE bits are acknowledged(TEACK and REACK and these flags), then the function can continue on to the end
-    }
-    // return; //end function
-}
-int __io_putchar(int c)
-{
-    while (!(USART5->ISR & USART_ISR_TXE))
-        ;
-    if (c == '\n')
-    {                       // check if char is new line
-        USART5->TDR = '\r'; // if char is new line, put carraige return first
-        while (!(USART5->ISR & USART_ISR_TXE))
-        {
-            // wait for TXE flag, meaning it has been passed
-        }
-    }
-    USART5->TDR = c; // put char to output
-    return c;
-}
-
-
-// Interupt Handler
-void init_tim6(void)
-{
-    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;         // enable clock for TIM6
-    TIM6->PSC = ((48000000 / (RATE * 10))) - 1; // set PSC to 48000000/(RATE*10)
-    TIM6->ARR = 10 - 1;                         // set ARR to 9
-
-
-    TIM6->DIER |= TIM_DIER_UIE; // enable UIE bit in DIER to allow an interrupt to occur each time the counter reaches the ARR value, restarting it back at 0
-
-
-    NVIC_EnableIRQ(TIM6_DAC_IRQn); // enable interrupt for TIM6
-
-
-    TIM6->CR1 |= TIM_CR1_CEN; // enable TIM6 by setting CEN bit
-    return;
-}
-void TIM6_DAC_IRQHandler()
-{                            // TIM7 ISR
-    TIM6->SR &= ~TIM_SR_UIF; // clear UIF bit in SR register(acknowledge interrupt)
-
-
-    offset0 += step0; // increment offset0 by step0
-    offset1 += step1; // increment offset0 by step1
-
-
-    if (offset0 >= (N << 16))
-    {
-        offset0 -= (N << 16); // decrement offset0 by (N<<16) if offset0 is greater than (N<<16)
-    }
-    if (offset1 >= (N << 16))
-    {
-        offset1 -= (N << 16); // decrement offset1 by (N<<16) if offset1 is greater than (N<<16)
-    }
-
-
-    int samp = wavetable[offset0 >> 16] + wavetable[offset1 >> 16]; // samp is the sum of the wavetable of offset0 and offset1
-
-
-    samp = (samp * volume) >> 15; // multiply samp by volume and shift right 17 bits
-
-
-    samp += 1200; // increment samp by 2048
-
-
-    DAC->DHR12R1 = (samp & 0xFFF);
-
-
-    return;
-}
-
-
-// Sound Helpers
-void set_freq(int chan, float f)
-{
-    if (chan == 0)
-    {
-        if (f == 0.0)
-        {
-            step0 = 0;
-            offset0 = 0;
-        }
-        else
-            step0 = (f * N / RATE) * (1 << 16);
-    }
-    if (chan == 1)
-    {
-        if (f == 0.0)
-        {
-            step1 = 0;
-            offset1 = 0;
-        }
-        else
-            step1 = (f * N / RATE) * (1 << 16);
-    }
-}
-void error_beep(void)
-{
-    set_freq(0, 250); // set standard freq, tried different frequencies, like this best
-    volatile int x;   // included because i kept getting overwritten when checking for set_volume
-    for (volatile int i = 0; i < 500000; i++)
-    {                 // delay for a set time
-        x = i % 1000; // mod i by 1000
-        if (x == 0)
-        {                           // if i mod 1000 is 0(basically, every 1000 ticks of i), then run set_volume(read_adc) to set the volume incrementally throughout the sound being played
-            set_volume(read_adc()); // set volume based on potentiometer value
-        }
-    }
-    set_freq(0, 0); // stop sound
 }
 
 
@@ -752,81 +452,7 @@ void delay_ms(uint32_t ms)
 }
 
 
-// LCD Functions
-int score(int current)
-{
-    return (10 * current);
-}
-void spi_cmd(unsigned int data)
-{
-    while (!(SPI1->SR & SPI_SR_TXE))
-    {
-    }
-    SPI1->DR = data;
-}
-void spi_data(unsigned int data)
-{
-    spi_cmd(data | 0x200);
-}
-void nano_wait(unsigned int n)
-{
-    asm("        mov r0,%0\n"
-        "repeat: sub r0,#83\n"
-        "        bgt repeat\n" : : "r"(n) : "r0", "cc");
-}
-void spi1_init_oled(void)
-{
-    SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk;
-    nano_wait(1000000);
-    spi_cmd(0x38); // Function set
-    spi_cmd(0x08); // Display OFF
-    spi_cmd(0x01); // Clear display
-    nano_wait(2000000);
-    spi_cmd(0x06); // Entry mode set
-    spi_cmd(0x02); // Cursor home
-    spi_cmd(0x0C); // Display ON
-}
-void spi1_display1(const char *string)
-{
-    SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk;
-    spi_cmd(0x02); // Cursor home
-    while (*string != '\0')
-    {
-        spi_data(*string);
-        string++;
-    }
-    SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;
-}
-void spi1_display2(const char *string)
-{
-    spi_cmd(0xC0); // Cursor second row
-    while (*string != '\0')
-    {
-        spi_data(*string);
-        string++;
-    }
-}
-void init_spi1(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
-    GPIOA->MODER &= ~((3 << (15 * 2)) | (3 << (5 * 2)) | (3 << (7 * 2)));
-    GPIOA->MODER |= ((2 << (15 * 2)) | (2 << (5 * 2)) | (2 << (7 * 2)));
-    GPIOA->AFR[0] &= ~((0xF << (5 * 4)) | (0xF << (7 * 4)));
-    GPIOA->AFR[0] |= ((0x0 << (5 * 4)) | (0x0 << (7 * 4)));
-    GPIOA->AFR[1] &= ~(0xF << ((15 - 8) * 4));
-    GPIOA->AFR[1] |= (0x0 << ((15 - 8) * 4));
 
-
-    RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
-    SPI1->CR1 &= ~SPI_CR1_SPE;
-    SPI1->CR1 |= SPI_CR1_BR;
-    SPI1->CR2 = SPI_CR2_DS_3 | SPI_CR2_DS_0;
-    SPI1->CR1 |= SPI_CR1_MSTR;
-    SPI1->CR2 |= SPI_CR2_SSOE;
-    SPI1->CR2 |= SPI_CR2_NSSP;
-    SPI1->CR2 |= SPI_CR2_TXDMAEN;
-    SPI1->CR1 |= SPI_CR1_SPE;
-}
 void oled_clear(void)
 {
     spi_cmd(0x01);      // Clear display

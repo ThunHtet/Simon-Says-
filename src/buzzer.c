@@ -21,7 +21,7 @@
 //init func headers
 void init_adc(void);
 void init_dac();
-void init_usart5();
+void init_usart5();                                                                                                                    
 void init_wavetable(void);
 void init_tim6();
 void TIM6_DAC_IRQHandler();
@@ -42,24 +42,24 @@ int offset0 = 0;
 int step1 = 0;
 int offset1 = 0;
 
-int main(void) {
-    internal_clock();
-    init_adc();
-    init_dac();
-    init_usart5();
-    init_wavetable();
-    init_tim6();
+// int main(void) {
+//     internal_clock();
+//     init_adc();
+//     init_dac();
+//     init_usart5();
+//     init_wavetable();
+//     init_tim6();
 
 
-    setbuf(stdout, NULL);
-    printf("sound on\n");
+//     setbuf(stdout, NULL);
+//     printf("sound on\n");
 
-    error_beep();
-    printf("sound off\n");
+//     error_beep();
+//     printf("sound off\n");
 
-    while(1) {
-    }
-}
+//     while(1) {
+//     }
+// }
 
 void init_wavetable(void) {
     for(int i=0; i < N; i++)   
