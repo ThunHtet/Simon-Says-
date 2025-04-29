@@ -37,7 +37,7 @@
 // Game constants
 #define STARTING_SEQUENCE_LENGTH 4
 #define MAX_SEQUENCE_LENGTH 8 // or whatever you'd like the max to be
-#define MAX_LEVEL 10
+#define MAX_LEVEL 6
 #define LED_ON_TIME 500   // milliseconds
 #define BETWEEN_TIME 200  // milliseconds
 #define DEBOUNCE_DELAY 50 // milliseconds
@@ -74,7 +74,6 @@ void PWM_Configure_RGB(void);
 void success_fade_green(void);
 void failure_flash_red(void);
 void celebration_sequence(void);
-void set_rgb_color(uint16_t red, uint16_t green, uint16_t blue);
 
 
 // LEDS
@@ -118,6 +117,9 @@ int main(void)
 
     while (1)
     {     
+        TIM1->CCR1 = 2400; //red
+        TIM1->CCR2 = 2400; //green
+        TIM1->CCR3 = 2400; //blue
         wait_for_game_start();
         reset_game();
         run_game_rounds();
@@ -355,19 +357,15 @@ void set_led_brightness(uint8_t led, char color, uint16_t brightness)
         break;
     }
 }
-void set_rgb_color(uint16_t red, uint16_t green, uint16_t blue)
-{
-    TIM3->CCR1 = red;   // PC6 - Red
-    TIM3->CCR2 = green; // PC7 - Green
-    TIM3->CCR3 = blue;  // PC8 - Blue
-}
 void success_fade_green(void)
 {
     TIM1->CCR1 = 2400; //red
     TIM1->CCR2 = 0; //green
     TIM1->CCR3 = 2400; //blue
     delay_ms(1000);
-    set_rgb_color(2400, 2400, 2400); // Turn off
+    TIM1->CCR1 = 2400; //red
+    TIM1->CCR2 = 2400; //green
+    TIM1->CCR3 = 2400; //blue
 }
 void failure_flash_red(void)
 {
@@ -375,25 +373,17 @@ void failure_flash_red(void)
     TIM1->CCR2 = 2400; //green
     TIM1->CCR3 = 2400; //blue
     delay_ms(1000);
-    set_rgb_color(2400, 2400, 2400); // Turn off
+    TIM1->CCR1 = 2400; //red
+    TIM1->CCR2 = 2400; //green
+    TIM1->CCR3 = 2400; //blue
 }
 void celebration_sequence(void)
 {
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < MAX_LEVEL; i++)
     {
-        set_rgb_color(1000, 0, 0); // Red
-        delay_ms(200);
-        set_rgb_color(0, 1000, 0); // Green
-        delay_ms(200);
-        set_rgb_color(0, 0, 1000); // Blue
-        delay_ms(200);
-        set_rgb_color(1000, 1000, 0); // Yellow
-        delay_ms(200);
-        set_rgb_color(0, 1000, 1000); // Cyan
-        delay_ms(200);
-        set_rgb_color(1000, 0, 1000); // Magenta
-        delay_ms(200);
-        set_rgb_color(0, 0, 0); // OFF
+        success_fade_green();
+        delay_ms(100);
+        failure_flash_red();
     }
 }
 
@@ -519,8 +509,6 @@ void delay_ms(uint32_t ms)
             ; // ~1ms delay at 48MHz
     }
 }
-
-
 
 void oled_clear(void)
 {
@@ -717,6 +705,7 @@ void handle_user_input(void)
         {
             game_over = true;
             input_mode = false;
+            failure_flash_red();
             return; // Wrong input → exit immediately
         }
         else
@@ -725,7 +714,8 @@ void handle_user_input(void)
             if (current_input >= seq_len)
             {
                 input_mode = false; // Successfully completed level!
-                success_feedback();
+                success_fade_green();
+                //success_feedback();
                 current_level++;
                 return;
             }
@@ -765,10 +755,6 @@ void game_over_sequence(void)
 
     failure_flash_red(); // 🟢 Replace GPIO toggling with your RGB helper
 
-
-    set_rgb_color(0, 0, 0); // Make sure RGB turns OFF after flashing
-
-
     wait_for_restart();
 }
 void win_sequence(void)
@@ -782,9 +768,6 @@ void win_sequence(void)
 
 
     celebration_sequence(); // 🟢 Replace game LED flashing with your RGB helper
-
-
-    set_rgb_color(0, 0, 0); // Ensure RGB turns OFF at the end
 
 
     game_over = true;
