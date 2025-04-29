@@ -64,6 +64,7 @@ void GPIO_Configure(void);
 void SysTick_Configure(void);
 
 // Timer initializations
+void init_tim1(void);
 void init_tim2(void);
 void init_tim3(void);
 void init_tim15(void);
@@ -112,10 +113,11 @@ int main(void)
     GPIO_Configure();
     init_spi1();
     spi1_init_oled();
+    setup_tim1();
 
 
     while (1)
-    {
+    {     
         wait_for_game_start();
         reset_game();
         run_game_rounds();
@@ -222,6 +224,49 @@ void PWM_Configure_RGB(void)
     TIM3->CR1 |= TIM_CR1_CEN;
 }
 
+void setup_tim1(void) {
+    // Generally the steps are similar to those in setup_tim3
+    // except we will need to set the MOE bit in BDTR. 
+    // Be sure to do so ONLY after enabling the RCC clock to TIM1.
+    RCC->AHBENR |= RCC_AHBENR_GPIOAEN; //enable clock for GPIOC
+
+    GPIOA->MODER &= ~(0xFF<<(2*8)); //clear gpioc mode for PA8-11
+    GPIOA->MODER |= (0xAA<<(2*8)); //set gpioc mode to alternative function for PC8-11(10101010<<16), 10 is alt func, applied to pc (18/2)=8,9,10,11
+
+    GPIOA->AFR[1] &= ~(0xF<<(4*0)); //clear gpioc afr to 0 for PA8
+    GPIOA->AFR[1] |= (0x2<<(4*0)); //set gpioc afr to 2 (alt func) for PA8
+
+    GPIOA->AFR[1] &= ~(0xF<<(4*1)); //clear gpioc afr to 0 for PA9
+    GPIOA->AFR[1] |= (0x2<<(4*1)); //set gpioc afr to 2 (alt func) for PA9
+    
+    GPIOA->AFR[1] &= ~(0xF<<(4*2)); //clear gpioc afr to 0 for PA10
+    GPIOA->AFR[1] |= (0x2<<(4*2)); //set gpioc afr to 2 (alt func) for PA10
+
+    GPIOA->AFR[1] &= ~(0xF<<(4*3)); //clear gpioc afr to 0 for PA11
+    GPIOA->AFR[1] |= (0x2<<(4*3)); //set gpioc afr to 2 (alt func) for PA11
+
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN; //enable sys clock for TIM1
+
+    TIM1->BDTR |= (0x1<<15); //enable MOE
+
+    //TIM1->CR1 &= ~(TIM_CR1_DIR); //clear dir to go up
+
+    TIM1->PSC = 1 - 1; //set psc to be 1
+
+    TIM1->ARR = 2400 - 1; //set freq to be 20kHz
+
+    TIM1->CCMR1 |= (TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1PE); // CH1
+    TIM1->CCMR1 |= (TIM_CCMR1_OC2M_2 | TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2PE); // CH2
+    TIM1->CCMR2 |= (TIM_CCMR2_OC3M_2 | TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3PE); // CH3
+    TIM1->CCMR2 |= (TIM_CCMR2_OC4M_2 | TIM_CCMR2_OC4M_1 | TIM_CCMR2_OC4PE); // CH4
+
+    TIM1->CCER |= TIM_CCER_CC1E; //enable output for ch1 active high output
+    TIM1->CCER |= TIM_CCER_CC2E; //enable output for ch2 active high output
+    TIM1->CCER |= TIM_CCER_CC3E; //enable output for ch3 active high output
+    TIM1->CCER |= TIM_CCER_CC4E; //enable output for ch4 active high output
+
+    TIM1->CR1 |= TIM_CR1_CEN; //enable timer 3
+}
 
 // Timers
 void init_tim2(void)
@@ -318,22 +363,19 @@ void set_rgb_color(uint16_t red, uint16_t green, uint16_t blue)
 }
 void success_fade_green(void)
 {
-    for (uint16_t i = 0; i < 1000; i += 10)
-    {
-        set_rgb_color(0, i, 0); // Green fade
-        delay_ms(10);
-    }
-    set_rgb_color(0, 0, 0); // Turn off
+    TIM1->CCR1 = 2400; //red
+    TIM1->CCR2 = 0; //green
+    TIM1->CCR3 = 2400; //blue
+    delay_ms(1000);
+    set_rgb_color(2400, 2400, 2400); // Turn off
 }
 void failure_flash_red(void)
 {
-    for (int i = 0; i < 5; i++)
-    {
-        set_rgb_color(1000, 0, 0); // Red ON
-        delay_ms(200);
-        set_rgb_color(0, 0, 0); // OFF
-        delay_ms(200);
-    }
+    TIM1->CCR1 = 0; //red
+    TIM1->CCR2 = 2400; //green
+    TIM1->CCR3 = 2400; //blue
+    delay_ms(1000);
+    set_rgb_color(2400, 2400, 2400); // Turn off
 }
 void celebration_sequence(void)
 {
@@ -355,6 +397,33 @@ void celebration_sequence(void)
     }
 }
 
+int getrgb(void);
+
+// Helper function for you
+// Accept a byte in BCD format and convert it to decimal
+uint8_t bcd2dec(uint8_t bcd) {
+    // Lower digit
+    uint8_t dec = bcd & 0xF;
+
+    // Higher digit
+    dec += 10 * (bcd >> 4);
+    return dec;
+}
+
+void setrgb(int rgb) {
+    uint8_t b = bcd2dec(rgb & 0xFF);
+    uint8_t g = bcd2dec((rgb >> 8) & 0xFF);
+    uint8_t r = bcd2dec((rgb >> 16) & 0xFF);
+
+    TIM1->CCR1 = 2400- ((2400*r)/99); //2400 is max value, we want 2400(off) - (2400 * r as percentage) = inverse of value representative of 2400*percentage of r
+    TIM1->CCR2 = 2400 - ((2400*g)/99); //2400 is max value, we want 2400(off) - (2400 * g as percentage) = inverse of value representative of 2400*percentage of g
+    TIM1->CCR3 = 2400 - ((2400*b)/99); //2400 is max value, we want 2400(off) - (2400 * b as percentage) = inverse of value representative of 2400*percentage of b
+
+    // TODO: Assign values to TIM1->CCRx registers
+    // Remember these are all percentages
+    // Also, LEDs are on when the corresponding PWM output is low
+    // so you might want to invert the numbers.
+}
 
 // LED Helper
 void light_led(uint8_t led)
