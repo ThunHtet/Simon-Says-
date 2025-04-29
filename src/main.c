@@ -7,14 +7,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 // ============================================
 //                  DEFINES
 // ============================================
+
 
 // LED pin definitions (PWM remapped)
 #define LED1_RED_PIN 6   // PC6 - TIM3_CH1
 #define LED1_GREEN_PIN 7 // PC7 - TIM3_CH2
 #define LED1_BLUE_PIN 8  // PC8 - TIM3_CH3
+
 
 // GPIO pin definitions
 #define GPIO_PIN_0 (1U << 0)
@@ -28,6 +31,7 @@
 #define BUTTON_BLUE_PIN GPIO_PIN_3
 #define BUTTON_PORT GPIOB
 
+
 // Game constants
 #define STARTING_SEQUENCE_LENGTH 4
 #define MAX_SEQUENCE_LENGTH 8 // or whatever you'd like the max to be
@@ -36,9 +40,11 @@
 #define BETWEEN_TIME 200  // milliseconds
 #define DEBOUNCE_DELAY 50 // milliseconds
 
+
 // Wavetable constants
 #define N 1000
 #define RATE 20000
+
 
 // ============================================
 //              GLOBAL VARIABLES
@@ -54,9 +60,11 @@ int step1 = 0, offset1 = 0;
 volatile uint32_t volume = 2400;
 bool game_started = false;
 
+
 // ============================================
 //              FUNCTION DECLARATIONS
 // ============================================
+
 
 // System setup
 void internal_clock(void);
@@ -68,13 +76,16 @@ void init_wavetable(void);
 void init_tim6(void);
 void init_usart5(void);
 
+
 // Timer initializations
 void init_tim2(void);
 void init_tim3(void);
 void init_tim15(void);
 
+
 // DAC IRQ Handler
 void TIM6_DAC_IRQHandler(void);
+
 
 // RGB
 void PWM_Configure_RGB(void);
@@ -83,15 +94,18 @@ void failure_flash_red(void);
 void celebration_sequence(void);
 void set_rgb_color(uint16_t red, uint16_t green, uint16_t blue);
 
+
 // LEDS
 void light_led(uint8_t led);
 void set_led_brightness(uint8_t led, char color, uint16_t brightness);
+
 
 // Buttons
 bool check_button(uint8_t button);
 uint8_t get_button_press(void);
 void delay_ms(uint32_t ms);
 void flush_buttons(void);
+
 
 // LCD Functions (Mackenzie's Code)
 void nano_wait(unsigned int n);
@@ -103,6 +117,7 @@ void spi1_display2(const char *string);
 void init_spi1(void);
 void oled_clear(void);
 
+
 // Sound helpers
 void error_beep(void);
 void set_freq(int chan, float f);
@@ -110,8 +125,10 @@ void set_volume(uint16_t adc_value);
 uint16_t read_adc(void);
 int __io_putchar(int c);
 
+
 // Diagnostic
 void test_led_button_mapping(void);
+
 
 // Game logic
 void wait_for_game_start(void);
@@ -125,33 +142,39 @@ void success_feedback(void);
 void game_over_sequence(void);
 void win_sequence(void);
 void wait_for_restart(void);
+void test_gpio_buttons_led(void);
+
 
 // ============================================
 //          MAIN FUNCTION
 // ============================================
-int main(void)
+
+
+
+
+    int main(void)
 {
     internal_clock();
     GPIO_Configure();
     init_spi1();
     spi1_init_oled();
-    init_adc();
-    init_dac();
-    init_wavetable();
-    init_tim6();
-    SysTick_Configure();
+
 
     while (1)
     {
-        wait_for_game_start(); //  Wait for Button 1 (Blue) to start
-        reset_game();          //  Generate sequence ONCE per game
-        run_game_rounds();     //  Handle rounds/levels until win or loss
+        wait_for_game_start();
+        reset_game();
+        run_game_rounds();
     }
 }
+
+
+
 
 // ============================================
 //          FULL IMPLEMENTATION BELOW
 // ============================================
+
 
 // Diagnostic Testing
 void test_gpio_pullup(void)
@@ -160,6 +183,7 @@ void test_gpio_pullup(void)
     GPIOB->MODER &= ~(3U << (0 * 2)); // Input mode for PB0
     GPIOB->PUPDR &= ~(3U << (0 * 2)); // Clear PUPDR
     GPIOB->PUPDR |= (1U << (0 * 2));  // Enable pull-up
+
 
     while (1)
     {
@@ -176,6 +200,7 @@ void test_led_button_mapping(void)
     // LEDs OFF at startup (HIGH = OFF for active-low)
     GPIOB->ODR |= ((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
 
+
     while (1)
     {
         if (!(BUTTON_PORT->IDR & GPIO_PIN_0)) // Button 1
@@ -183,30 +208,36 @@ void test_led_button_mapping(void)
         else
             GPIOB->ODR |= (1U << 11); // Blue OFF
 
+
         if (!(BUTTON_PORT->IDR & GPIO_PIN_1)) // Button 2
             GPIOB->ODR &= ~(1U << 10);        // Green ON
         else
             GPIOB->ODR |= (1U << 10); // Green OFF
+
 
         if (!(BUTTON_PORT->IDR & GPIO_PIN_2)) // Button 3
             GPIOB->ODR &= ~(1U << 9);         // Red ON
         else
             GPIOB->ODR |= (1U << 9); // Red OFF
 
+
         if (!(BUTTON_PORT->IDR & GPIO_PIN_3)) // Button 4
             GPIOB->ODR &= ~(1U << 8);         // White ON
         else
             GPIOB->ODR |= (1U << 8); // White OFF
 
+
         delay_ms(10);
     }
 }
+
 
 // System setup
 void GPIO_Configure(void)
 {
     // Enable GPIO clocks for A, B, C
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN | RCC_AHBENR_GPIOCEN;
+
 
     // ------------------------------
     // Configure PB8–PB11 (Game Logic LEDs)
@@ -220,8 +251,10 @@ void GPIO_Configure(void)
     GPIOB->MODER &= ~((3U << (8 * 2)) | (3U << (9 * 2)) | (3U << (10 * 2)) | (3U << (11 * 2)));
     GPIOB->MODER |= ((1U << (8 * 2)) | (1U << (9 * 2)) | (1U << (10 * 2)) | (1U << (11 * 2)));
 
+
     // Push-pull output
     GPIOB->OTYPER &= ~((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
+
 
     // Output speed: High speed (11)
     GPIOB->OSPEEDR &= ~((3U << (8 * 2)) | (3U << (9 * 2)) |
@@ -229,9 +262,11 @@ void GPIO_Configure(void)
     GPIOB->OSPEEDR |= ((3U << (8 * 2)) | (3U << (9 * 2)) |
                        (3U << (10 * 2)) | (3U << (11 * 2)));
 
+
     // No pull-up/pull-down for LEDs
     GPIOB->PUPDR &= ~((3U << (8 * 2)) | (3U << (9 * 2)) |
                       (3U << (10 * 2)) | (3U << (11 * 2)));
+
 
     // ------------------------------
     // Configure PB0–PB3 (buttons) as input with pull-up
@@ -240,10 +275,10 @@ void GPIO_Configure(void)
     GPIOB->MODER &= ~((3U << (0 * 2)) | (3U << (1 * 2)) |
                       (3U << (2 * 2)) | (3U << (3 * 2))); // Input mode (00)
 
-    GPIOB->PUPDR &= ~((3U << (0 * 2)) | (3U << (1 * 2)) |
-                      (3U << (2 * 2)) | (3U << (3 * 2))); // Clear previous
-    GPIOB->PUPDR |= ((1U << (0 * 2)) | (1U << (1 * 2)) |
-                     (1U << (2 * 2)) | (1U << (3 * 2))); // Pull-up (01)
+
+    
+    GPIOB->PUPDR &= ~((3U<<(0*2))|(3U<<(1*2))|(3U<<(2*2))|(3U<<(3*2)));
+   GPIOB->PUPDR |=  ((2U<<(0*2))|(2U<<(1*2))|(2U<<(2*2))|(2U<<(3*2)));
 }
 void SysTick_Configure(void)
 {
@@ -252,6 +287,7 @@ void SysTick_Configure(void)
     SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_ENABLE_Msk;
 }
 
+
 // PWM Configuration
 void PWM_Configure_RGB(void)
 {
@@ -259,32 +295,40 @@ void PWM_Configure_RGB(void)
     RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
     RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
 
+
     // Set PC6, PC7, PC8 to Alternate Function mode (AF0 = TIM3)
     GPIOC->MODER &= ~((3 << (6 * 2)) | (3 << (7 * 2)) | (3 << (8 * 2)));
     GPIOC->MODER |= ((2 << (6 * 2)) | (2 << (7 * 2)) | (2 << (8 * 2))); // AF mode
+
 
     // AFR settings: AF0 is 0, so technically no need to set AFRs. Safe to clear:
     GPIOC->AFR[0] &= ~((0xF << (6 * 4)) | (0xF << (7 * 4)));
     GPIOC->AFR[1] &= ~(0xF << ((8 - 8) * 4)); // PC8 AFR[1] slot 0
 
+
     // Timer 3 setup
     TIM3->PSC = 47;  // 48MHz / (47 + 1) = 1MHz timer clock
     TIM3->ARR = 999; // 1kHz PWM frequency (adjust as needed)
+
 
     // Configure PWM mode 1 (OCxM = 110), preload enable
     TIM3->CCMR1 = (6 << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE_Msk | // Channel 1 (PC6 Red)
                   (6 << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE_Msk;  // Channel 2 (PC7 Green)
     TIM3->CCMR2 = (6 << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE_Msk;  // Channel 3 (PC8 Blue)
 
+
     // Enable output on all three channels
     TIM3->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+
 
     // Enable auto-reload preload
     TIM3->CR1 |= TIM_CR1_ARPE;
 
+
     // Enable timer
     TIM3->CR1 |= TIM_CR1_CEN;
 }
+
 
 // Timers
 void init_tim2(void)
@@ -321,12 +365,14 @@ void init_tim15(void)
     TIM15->CR1 = TIM_CR1_CEN;
 }
 
+
 // ADC and DAC functions
 void init_adc(void)
 {
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // enable PA1
     GPIOA->MODER |= (3 << (1 * 2));    // PA1 to analog mode
     RCC->APB2ENR |= RCC_APB2ENR_ADCEN; // PA1 as adc in
+
 
     ADC1->CFGR1 &= ~ADC_CFGR1_CONT; // single conversion mode
     ADC1->CR |= ADC_CR_ADEN;        // enable adc
@@ -351,7 +397,9 @@ void init_dac(void)
     GPIOA->MODER |= (0x3 << (2 * 4));  // set PA4 to DAC_OUT1: (0x3<<(2*4))= 11 00 00 00 00
     RCC->APB1ENR |= RCC_APB1ENR_DACEN; // enable DAC RCC clock
 
+
     DAC->CR &= ~DAC_CR_TSEL1; // select TRGO trigger fro TSEL field in CR register(bit 000(~0x7) shifted to the left 3 bits)
+
 
     DAC->CR |= DAC_CR_EN1; // enable DAC
 }
@@ -361,20 +409,26 @@ void init_wavetable(void)
         wavetable[i] = (i < N / 2) ? 32767 : -32767; // create wave for buzzer sound
 }
 
+
 // USART Debug Setup
 void init_usart5()
 {
     RCC->AHBENR |= (RCC_AHBENR_GPIOCEN | RCC_AHBENR_GPIODEN); // enable port c and d clocks
 
+
     GPIOC->MODER &= ~(GPIO_MODER_MODER12); // reset PC12
     GPIOC->MODER |= (0x2 << (2 * 12));     // set PC12 function to alt func(2)
 
+
     GPIOC->AFR[1] |= (0x2 << (16)); // set AFR[1], bit shifted 16 bits, which represents AFR12(which means this is the set bit for AltFunc for PC12) to 0x2(representing AF2, which is USART5_TX)
+
 
     GPIOD->MODER &= ~(GPIO_MODER_MODER2); // reset PD2
     GPIOD->MODER |= (0x2 << (2 * 2));     // set PD2 function to alt func(2)
 
+
     GPIOD->AFR[0] |= (0x2 << (8)); // set AFR[0], bit shifted 8 bits, which represents AFR2(which means this is the set bit for AltFunc for PD2) to 0x2(representing AF2, which is USART5_RX)
+
 
     RCC->APB1ENR |= RCC_APB1ENR_USART5EN;          // enable RCC clock to USART5
     USART5->CR1 &= ~(USART_CR1_UE);                // disable usart bit
@@ -384,8 +438,10 @@ void init_usart5()
     USART5->CR1 &= ~(USART_CR1_OVER8);             // set OVER8 to 0, representing 16x oversampling
     USART5->BRR = 0x1A1;                           // gotten from family reference for oversampling 16, desired baud rate of 115.2KBps
 
+
     USART5->CR1 |= USART_CR1_TE; // enable transmitter bit
     USART5->CR1 |= USART_CR1_RE; // enable reciever bit
+
 
     USART5->CR1 |= USART_CR1_UE; // enable usart bit
     while (!((USART5->ISR & USART_ISR_TEACK) && (USART5->ISR & USART_ISR_REACK)))
@@ -394,7 +450,6 @@ void init_usart5()
     }
     // return; //end function
 }
-
 int __io_putchar(int c)
 {
     while (!(USART5->ISR & USART_ISR_TXE))
@@ -411,6 +466,7 @@ int __io_putchar(int c)
     return c;
 }
 
+
 // Interupt Handler
 void init_tim6(void)
 {
@@ -418,9 +474,12 @@ void init_tim6(void)
     TIM6->PSC = ((48000000 / (RATE * 10))) - 1; // set PSC to 48000000/(RATE*10)
     TIM6->ARR = 10 - 1;                         // set ARR to 9
 
+
     TIM6->DIER |= TIM_DIER_UIE; // enable UIE bit in DIER to allow an interrupt to occur each time the counter reaches the ARR value, restarting it back at 0
 
+
     NVIC_EnableIRQ(TIM6_DAC_IRQn); // enable interrupt for TIM6
+
 
     TIM6->CR1 |= TIM_CR1_CEN; // enable TIM6 by setting CEN bit
     return;
@@ -429,8 +488,10 @@ void TIM6_DAC_IRQHandler()
 {                            // TIM7 ISR
     TIM6->SR &= ~TIM_SR_UIF; // clear UIF bit in SR register(acknowledge interrupt)
 
+
     offset0 += step0; // increment offset0 by step0
     offset1 += step1; // increment offset0 by step1
+
 
     if (offset0 >= (N << 16))
     {
@@ -441,16 +502,22 @@ void TIM6_DAC_IRQHandler()
         offset1 -= (N << 16); // decrement offset1 by (N<<16) if offset1 is greater than (N<<16)
     }
 
+
     int samp = wavetable[offset0 >> 16] + wavetable[offset1 >> 16]; // samp is the sum of the wavetable of offset0 and offset1
+
 
     samp = (samp * volume) >> 15; // multiply samp by volume and shift right 17 bits
 
+
     samp += 1200; // increment samp by 2048
+
 
     DAC->DHR12R1 = (samp & 0xFFF);
 
+
     return;
 }
+
 
 // Sound Helpers
 void set_freq(int chan, float f)
@@ -490,6 +557,7 @@ void error_beep(void)
     }
     set_freq(0, 0); // stop sound
 }
+
 
 // RGB Helpers
 void set_led_brightness(uint8_t led, char color, uint16_t brightness)
@@ -556,33 +624,7 @@ void success_fade_green(void)
         delay_ms(10);
     }
     set_rgb_color(0, 0, 0); // Turn off
-    for (uint16_t i = 1000; i > 0; i -= 20) {
-        set_rgb_color(0, i, 0);
-        delay_ms(10);
-    }
-    set_rgb_color(0, 0, 0);
 }
-
-// void success_feedback(void)
-// {
-//     // Discrete LED celebration
-//     for (int i = 0; i < 3; i++) {
-//         light_led(1); light_led(2); light_led(3); light_led(4);
-//         delay_ms(100);
-//         light_led(0);
-//         delay_ms(100);
-//     }
-    
-//     // RGB green fade
-//     success_fade_green();
-    
-//     // Show score
-//     int current_score = score(current_level);
-//     char score_buf[20];
-//     sprintf(score_buf, "Score: %d", current_score);
-//     spi1_display2(score_buf);
-// }
-
 void failure_flash_red(void)
 {
     for (int i = 0; i < 5; i++)
@@ -613,11 +655,13 @@ void celebration_sequence(void)
     }
 }
 
+
 // LED Helper
 void light_led(uint8_t led)
 {
     // First turn all LEDs OFF (ACTIVE-HIGH: clear bits)
     GPIOB->ODR &= ~((1U << 8) | (1U << 9) | (1U << 10) | (1U << 11));
+
 
     switch (led)
     {
@@ -640,26 +684,29 @@ void light_led(uint8_t led)
     }
 }
 
+
 // Button Helpers
 bool check_button(uint8_t button)
 {
+    uint32_t mask;
     switch (button)
     {
-    case 1:
-        return !(BUTTON_PORT->IDR & GPIO_PIN_0); // NOT '!' because active-low
-    case 2:
-        return !(BUTTON_PORT->IDR & GPIO_PIN_1);
-    case 3:
-        return !(BUTTON_PORT->IDR & GPIO_PIN_2);
-    case 4:
-        return !(BUTTON_PORT->IDR & GPIO_PIN_3);
-    default:
-        return false;
+        case 1: mask = GPIO_PIN_0; break;
+        case 2: mask = GPIO_PIN_1; break;
+        case 3: mask = GPIO_PIN_2; break;
+        case 4: mask = GPIO_PIN_3; break;
+        default: return false;
     }
+    return (BUTTON_PORT->IDR & mask) != 0;
 }
+
+
+
+
 uint8_t get_button_press(void)
 {
     uint8_t detected_button = 0;
+
 
     while (1)
     {
@@ -692,6 +739,7 @@ void flush_buttons(void)
     delay_ms(50); // debounce
 }
 
+
 // Delay Helper
 void delay_ms(uint32_t ms)
 {
@@ -702,6 +750,7 @@ void delay_ms(uint32_t ms)
             ; // ~1ms delay at 48MHz
     }
 }
+
 
 // LCD Functions
 int score(int current)
@@ -767,6 +816,7 @@ void init_spi1(void)
     GPIOA->AFR[1] &= ~(0xF << ((15 - 8) * 4));
     GPIOA->AFR[1] |= (0x0 << ((15 - 8) * 4));
 
+
     RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
     SPI1->CR1 &= ~SPI_CR1_SPE;
     SPI1->CR1 |= SPI_CR1_BR;
@@ -783,6 +833,7 @@ void oled_clear(void)
     nano_wait(2000000); // Wait for clear to complete
 }
 
+
 // Game Logic
 void reset_game(void)
 {
@@ -797,6 +848,7 @@ void wait_for_game_start(void)
     oled_clear();
     spi1_display1("Press Button 1");
     spi1_display2("(Blue) to start!");
+
 
     while (1)
     {
@@ -815,6 +867,7 @@ void countdown(void)
     delay_ms(1000); // Pause before countdown
     spi1_display1("Starting game...");
     delay_ms(1000); // Pause before countdown
+
 
     for (int i = 5; i >= 1; i--)
     {
@@ -843,6 +896,7 @@ void generate_sequence(void)
     sequence[2] = 2; // Green
     sequence[3] = 1; // Blue
 
+
     // If you want random sequences for higher levels:
     for (int i = 4; i < MAX_LEVEL; i++)
     {
@@ -854,17 +908,17 @@ void play_sequence(void)
     char buffer[20];
     int seq_len = sequence_length_for_level(current_level);
 
+
     oled_clear();
     sprintf(buffer, "Level %d:", current_level);
     spi1_display1(buffer);
     delay_ms(1000); // Show level
 
+
     // 🟢 Ensure ALL LEDs are OFF at the start:
-    // light_led(5);
-    // oled_clear();
-    light_led(0);
-    set_rgb_color(0, 0, 0); // Added RGB off
+    light_led(5);
     oled_clear();
+
 
     for (int i = 0; i < seq_len; i++)
     {
@@ -879,32 +933,29 @@ void play_sequence(void)
         case 1:
             light_led(1);
             spi1_display2("Blue");
-            set_freq(0, 523.25);
             break;
         case 2:
             light_led(2);
             spi1_display2("Green");
-            set_freq(0, 659.25);
             break;
         case 3:
             light_led(3);
             spi1_display2("Red");
-            set_freq(0, 783.99);
             break;
         case 4:
             light_led(4);
             spi1_display2("White");
-            set_freq(0, 1046.50);
             break;
         }
 
+
         delay_ms(1000); // LED ON time
         light_led(0);   // Turn OFF after each flash!
-        set_freq(0, 0);
     }
 
+
     oled_clear();
-    delay_ms(500); // Pause between sequence steps
+    delay_ms(1000); // Pause between sequence steps
     spi1_display1("Your turn!");
     delay_ms(500);
 }
@@ -913,36 +964,34 @@ void handle_user_input(void)
     char buffer[20];
     int seq_len = sequence_length_for_level(current_level);
 
+
     oled_clear();
     spi1_display1("Your turn!");
+
 
     current_input = 0;
     flush_buttons();   // Clear any previous button presses
     input_mode = true; // Set input mode to true
 
+
     delay_ms(50); // Optional debounce
+
 
     while (current_input < seq_len && !game_over)
     {
         uint8_t button = get_button_press();
-        // light_led(0); // LED OFF
+        light_led(0); // LED OFF
 
-        // light_led(button); // Feedback LED ON
-        // delay_ms(300);
-        // light_led(0); // LED OFF
-        switch(button) {
-            case 1: set_freq(0, 523.25); break;  
-            case 2: set_freq(0, 659.25); break; 
-            case 3: set_freq(0, 783.99); break;  
-            case 4: set_freq(0, 1046.50); break; 
-        }
+
+        light_led(button); // Feedback LED ON
         delay_ms(300);
-        light_led(0);
-        set_freq(0, 0);
+        light_led(0); // LED OFF
+
 
         // Log the user's input to the screen:
         oled_clear();
         spi1_display1("You pressed:");
+
 
         switch (button)
         {
@@ -963,16 +1012,16 @@ void handle_user_input(void)
             break;
         }
 
+
         spi1_display2(buffer); // Actually print the color name
         delay_ms(800);         // Let the player read the feedback
+
 
         // Check correctness:
         if (button != sequence[current_input])
         {
             game_over = true;
             input_mode = false;
-            failure_flash_red();
-            error_beep();
             return; // Wrong input → exit immediately
         }
         else
@@ -1005,11 +1054,11 @@ void success_feedback(void)
     sprintf(score_buf, "Score: %d", current_score);
     spi1_display2(score_buf);
 }
-
 void game_over_sequence(void)
 {
     input_mode = false;
     error_beep();
+
 
     oled_clear();
     spi1_display1("Game Over!");
@@ -1018,9 +1067,12 @@ void game_over_sequence(void)
     sprintf(score_buf, "Score: %d", current_score);
     spi1_display2(score_buf);
 
+
     failure_flash_red(); // 🟢 Replace GPIO toggling with your RGB helper
 
+
     set_rgb_color(0, 0, 0); // Make sure RGB turns OFF after flashing
+
 
     wait_for_restart();
 }
@@ -1028,28 +1080,35 @@ void win_sequence(void)
 {
     input_mode = false;
 
+
     oled_clear();
     spi1_display1("Congratulations!");
     spi1_display2("All levels passed!");
 
+
     celebration_sequence(); // 🟢 Replace game LED flashing with your RGB helper
 
+
     set_rgb_color(0, 0, 0); // Ensure RGB turns OFF at the end
+
 
     game_over = true;
     wait_for_restart();
 }
+
 
 void run_game_rounds(void)
 {
     game_over = false;
     current_level = 1;
 
+
     while (!game_over)
     {
         countdown();
         play_sequence();
         handle_user_input(); // This may increment current_level or set game_over
+
 
         if (game_over)
         {
@@ -1071,3 +1130,6 @@ void wait_for_restart(void)
     }
     delay_ms(300); // Debounce
 }
+
+
+

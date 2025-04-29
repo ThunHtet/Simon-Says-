@@ -8,19 +8,19 @@
         {
             "name": "PlatformIO",
             "includePath": [
-                "/Users/ananyaagastheeswaran/ECE 362/Simon-Says-/include",
-                "/Users/ananyaagastheeswaran/ECE 362/Simon-Says-/src",
-                "/Users/ananyaagastheeswaran/.platformio/packages/framework-cmsis/CMSIS/Include",
-                "/Users/ananyaagastheeswaran/.platformio/packages/framework-cmsis-stm32f0/Include",
+                "/home/shay/a/rooda/ece362/Simon Says/Simon-Says-/include",
+                "/home/shay/a/rooda/ece362/Simon Says/Simon-Says-/src",
+                "/home/shay/a/rooda/.platformio/packages/framework-cmsis/CMSIS/Include",
+                "/home/shay/a/rooda/.platformio/packages/framework-cmsis-stm32f0/Include",
                 ""
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
-                    "/Users/ananyaagastheeswaran/ECE 362/Simon-Says-/include",
-                    "/Users/ananyaagastheeswaran/ECE 362/Simon-Says-/src",
-                    "/Users/ananyaagastheeswaran/.platformio/packages/framework-cmsis/CMSIS/Include",
-                    "/Users/ananyaagastheeswaran/.platformio/packages/framework-cmsis-stm32f0/Include",
+                    "/home/shay/a/rooda/ece362/Simon Says/Simon-Says-/include",
+                    "/home/shay/a/rooda/ece362/Simon Says/Simon-Says-/src",
+                    "/home/shay/a/rooda/.platformio/packages/framework-cmsis/CMSIS/Include",
+                    "/home/shay/a/rooda/.platformio/packages/framework-cmsis-stm32f0/Include",
                     ""
                 ]
             },
@@ -32,7 +32,7 @@
                 "F_CPU=48000000L",
                 ""
             ],
-            "compilerPath": "/Users/ananyaagastheeswaran/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-gcc",
+            "compilerPath": "/home/shay/a/rooda/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-gcc",
             "compilerArgs": [
                 "-mthumb",
                 "-mcpu=cortex-m0",
