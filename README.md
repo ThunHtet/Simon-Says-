@@ -46,7 +46,7 @@ This project tests a player's memory by generating a flashing LED pattern that t
 - **Success Criteria**:
   - Starting with a hardcoded level 1 sequence.
   - Subsequent levels use dynamically generated sequences with increasing lengths.
-  - Difficulty scales up to a defined maximum (MAX_LEVEL = 6).
+  - Difficulty scales up to a defined maximum (MAX_LEVEL = 8).
 
 ✅ Achieved: Levels scale from 4 to 8 steps, each level more difficult than the last. Sequence playback uses consistent countdown and pacing.
 
