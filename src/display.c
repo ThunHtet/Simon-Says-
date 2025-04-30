@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+
+//calculates the score
 int score(int current){
     return (10*current);
 }
@@ -27,6 +29,8 @@ void nano_wait(unsigned int n) {
             "repeat: sub r0,#83\n"
             "        bgt repeat\n" : : "r"(n) : "r0", "cc");
 }
+
+//intalized the display
 void spi1_init_oled(void) {
     SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk;
     nano_wait(1000000);
@@ -62,7 +66,7 @@ void spi1_display2(const char *string) {
     }
 }
 
-
+//intalized the display
 void init_spi1(void) {
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
     GPIOA->MODER &= ~((3<<(15*2))|(3<<(5*2))|(3<<(7*2))); //clear bits 5,7,15
